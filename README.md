@@ -21,6 +21,15 @@ designed **Coming Soon** state rather than a blank or broken screen.
 Versions are pinned in `gradle/libs.versions.toml` — AGP 8.7.3, Kotlin 2.0.21,
 Compose BOM 2024.12.01. Bump them together, not individually.
 
+## Building the APK
+
+Push to GitHub and the APK builds itself — see **[GITHUB_ACTIONS.md](GITHUB_ACTIONS.md)**
+for the full walkthrough. Short version: push to `main`, open the Actions tab,
+download the artifact. Tag `v0.1.0` to cut a signed release.
+
+Because this scaffold has never been compiled locally, the first CI run is
+effectively the first compile. Expect a few import-level errors on run one.
+
 ---
 
 ## Structure

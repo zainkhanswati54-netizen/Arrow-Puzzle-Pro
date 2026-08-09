@@ -17,12 +17,33 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    // CI supplies the keystore through environment variables. When they are absent
+    // (local builds, forks, PRs from contributors) the release build falls back to
+    // the debug key so the APK is still installable for testing.
+    val ciKeystore: String? = System.getenv("KEYSTORE_PATH")
+
+    signingConfigs {
+        create("release") {
+            if (ciKeystore != null) {
+                storeFile = file(ciKeystore)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
         }
         release {
+            signingConfig = if (ciKeystore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
