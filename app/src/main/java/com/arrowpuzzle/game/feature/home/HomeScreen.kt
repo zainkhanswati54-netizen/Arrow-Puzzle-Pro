@@ -127,7 +127,7 @@ fun HomeScreen(
             Spacer(Modifier.weight(1f))
 
             Text(
-                text = "Arrow Puzzle",
+                text = "Arrow Puzzle Pro",
                 style = MaterialTheme.typography.displayLarge,
                 color = palette.ink,
                 textAlign = TextAlign.Center,
