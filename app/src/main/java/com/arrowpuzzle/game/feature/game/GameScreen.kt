@@ -1,21 +1,11 @@
 package com.arrowpuzzle.game.feature.game
 
 import androidx.compose.animation.AnimatedVisibility
-<<<<<<< HEAD
-=======
 import androidx.compose.animation.core.Animatable
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-<<<<<<< HEAD
-=======
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,42 +15,36 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Lightbulb
-import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-<<<<<<< HEAD
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-=======
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -68,58 +52,99 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextAlign
-<<<<<<< HEAD
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-=======
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Ink
 import com.arrowpuzzle.game.core.design.Red500
-import com.arrowpuzzle.game.core.game.CellKey
-import com.arrowpuzzle.game.core.game.Direction
-import com.arrowpuzzle.game.core.game.PuzzleEngine
-import com.arrowpuzzle.game.core.game.PuzzleState
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
-import com.arrowpuzzle.game.core.motion.pulse
-import com.arrowpuzzle.game.core.ui.AppTopBar
 import com.arrowpuzzle.game.core.ui.ArrowBackdrop
-import com.arrowpuzzle.game.core.ui.PrimaryPillButton
+import com.arrowpuzzle.game.core.ui.AppTopBar
+import com.arrowpuzzle.game.core.ui.ComingSoonBadge
+import com.arrowpuzzle.game.navigation.GameMode
+
+/**
+ * The play surface. Board *logic* is deliberately out of scope for this build, but
+ * the board itself is fully rendered — geometry, spacing, tap targets, and the
+ * feedback loop are all real, so wiring the solver in later is a drop-in.
+ *
+ * The two things this screen proves out ahead of logic:
+ *  1. Tap targets. The most common complaint about the games on the store is
+ *     mis-taps on crowded boards, so every cell keeps a 48dp touch slop even when
+ *     the drawn glyph is smaller.
+ *  2. Feedback latency. Taps nudge the arrow immediately on the same frame rather
+ *     than waiting for a rules check, which is what makes a puzzle game feel tight.
+ */
+
+enum class Direction(val dx: Int, val dy: Int, val degrees: Float) {
+    Up(0, -1, -90f),
+    Right(1, 0, 0f),
+    Down(0, 1, 90f),
+    Left(-1, 0, 180f)
+}
+
+@Immutable
+data class ArrowPiece(val row: Int, val column: Int, val direction: Direction)
+
+private const val GridSize = 6
+
+/** A hand-placed sample board — enough to show real density and spacing. */
+private val SampleBoard = listOf(
+    ArrowPiece(0, 1, Direction.Down),
+    ArrowPiece(0, 3, Direction.Right),
+    ArrowPiece(0, 4, Direction.Down),
+    ArrowPiece(1, 0, Direction.Right),
+    ArrowPiece(1, 2, Direction.Up),
+    ArrowPiece(1, 5, Direction.Left),
+    ArrowPiece(2, 1, Direction.Right),
+    ArrowPiece(2, 3, Direction.Down),
+    ArrowPiece(2, 4, Direction.Left),
+    ArrowPiece(3, 0, Direction.Up),
+    ArrowPiece(3, 2, Direction.Right),
+    ArrowPiece(3, 5, Direction.Up),
+    ArrowPiece(4, 1, Direction.Up),
+    ArrowPiece(4, 3, Direction.Left),
+    ArrowPiece(4, 4, Direction.Up),
+    ArrowPiece(5, 0, Direction.Right),
+    ArrowPiece(5, 2, Direction.Up),
+    ArrowPiece(5, 4, Direction.Left)
+)
 
 @Composable
 fun GameScreen(
     mode: String,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
-    levelId: Int = 1,
-    onNextLevel: ((Int) -> Unit)? = null
+    level: Int = 2,
+    lives: Int = 3
 ) {
-    val context = LocalContext.current
-    val vm: GameViewModel = viewModel(
-        key = "game_$levelId",
-        factory = GameViewModel.factory(context, levelId)
-    )
-    val uiState by vm.state.collectAsState()
-    val puzzle = uiState.puzzle ?: return
     val palette = AppTheme.palette
     val haptics = LocalHapticFeedback.current
-<<<<<<< HEAD
-=======
+    var toastKey by remember { mutableIntStateOf(0) }
+    var toastVisible by remember { mutableStateOf(false) }
 
-    val title = "Level ${puzzle.level.id}"
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
+    val title = when (mode) {
+        GameMode.Daily -> "Daily Challenge"
+        GameMode.Tournament -> "Tournament"
+        else -> "Level $level"
+    }
+
+    LaunchedEffect(toastKey) {
+        if (toastKey > 0) {
+            toastVisible = true
+            kotlinx.coroutines.delay(1800)
+            toastVisible = false
+        }
+    }
+
+    val nudge: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        toastKey++
+    }
 
     Box(
         modifier = modifier
@@ -130,294 +155,100 @@ fun GameScreen(
 
         Column(Modifier.fillMaxSize()) {
             AppTopBar(
-                title = "Level ${puzzle.level.id}",
+                title = title,
                 onBack = onExit,
-                trailing = { LivesIndicator(lives = puzzle.lives) }
+                trailing = { LivesIndicator(lives = lives) }
             )
-
-<<<<<<< HEAD
-            // Arrows remaining + difficulty
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Flag icon + remaining count
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "🏁", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "${puzzle.remaining.size}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = palette.ink
-                    )
-                }
-                Text(
-                    text = puzzle.level.difficulty.name,
-=======
-            // Progress bar
-            ProgressIndicator(
-                correct = uiState.correctCount,
-                total = uiState.totalCount,
-                modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .enterFromBelow(delayMillis = Motion.stagger(0))
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            // Move counter
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Moves: ${puzzle.moveCount}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = palette.inkMuted
-                )
-                Text(
-                    text = "${puzzle.level.difficulty.name}",
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-                    style = MaterialTheme.typography.labelMedium,
-                    color = palette.inkMuted
-                )
-            }
 
             Spacer(Modifier.height(8.dp))
 
-<<<<<<< HEAD
-            // The maze board
-            MazeBoard(
-                puzzle = puzzle,
-                escapable = uiState.escapable,
-                hintCell = uiState.hintCell,
-=======
             Board(
-                puzzle = puzzle,
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-                onCellTap = { row, col ->
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    vm.onCellTap(row, col)
-                },
+                pieces = SampleBoard,
+                onPieceTap = { nudge() },
                 modifier = Modifier
-                    .enterFromBelow(delayMillis = Motion.stagger(1), travel = 20f)
-<<<<<<< HEAD
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-=======
+                    .enterFromBelow(delayMillis = Motion.stagger(0), travel = 20f)
                     .padding(horizontal = 20.dp)
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
 
-            // Tool buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .enterFromBelow(delayMillis = Motion.stagger(2))
                     .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ToolButton(
                     label = "Hint",
-                    badgeCount = puzzle.hintsRemaining,
                     icon = Icons.Rounded.Lightbulb,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.onHint()
-                    },
+                    onClick = nudge,
                     modifier = Modifier.weight(1f)
                 )
                 ToolButton(
-<<<<<<< HEAD
-                    label = "Retry",
-                    icon = Icons.Rounded.Refresh,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        SoundEngine.playButton()
-                        vm.retry()
-=======
                     label = "Undo",
                     icon = Icons.Rounded.Undo,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.onUndo()
-                    },
+                    onClick = nudge,
                     modifier = Modifier.weight(1f)
                 )
                 ToolButton(
                     label = "Shuffle",
                     icon = Icons.Rounded.Shuffle,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.onShuffle()
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-                    },
+                    onClick = nudge,
                     modifier = Modifier.weight(1f)
                 )
             }
 
             Spacer(Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                ComingSoonBadge(
+                    text = "Board logic coming soon",
+                    modifier = Modifier.enterFromBelow(delayMillis = Motion.stagger(3))
+                )
+            }
         }
 
-<<<<<<< HEAD
-        // Tutorial overlay
-=======
-        // Tutorial overlay for Level 1
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-        if (puzzle.level.isTutorial && uiState.tutorialStep == 0) {
-            TutorialOverlay(onDismiss = { vm.dismissTutorial() })
-        }
-
-<<<<<<< HEAD
-        // Win
-=======
-        // Win celebration
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-        if (uiState.showWinCelebration) {
-            WinDialog(
-                levelId = puzzle.level.id,
-                moves = puzzle.moveCount,
-                onNext = {
-                    vm.dismissWin()
-<<<<<<< HEAD
-                    onNextLevel?.invoke(puzzle.level.id + 1) ?: onExit()
-                },
-                onExit = { vm.dismissWin(); onExit() }
-            )
-        }
-
-        // Game Over
-        if (uiState.showGameOver) {
-            GameOverDialog(
-                onRetry = { vm.retry() },
-                onExit = onExit
-=======
-                    val nextId = puzzle.level.id + 1
-                    if (onNextLevel != null) {
-                        onNextLevel(nextId)
-                    } else {
-                        onExit()
-                    }
-                },
-                onExit = {
-                    vm.dismissWin()
-                    onExit()
-                }
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-            )
+        // Transient feedback. Sits above everything and never blocks a tap.
+        AnimatedVisibility(
+            visible = toastVisible,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 84.dp),
+            enter = slideInVertically(Motion.bouncy()) { it } +
+                fadeIn(Motion.smooth(Motion.Quick)),
+            exit = slideOutVertically(Motion.smooth(Motion.Normal)) { it } +
+                fadeOut(Motion.smooth(Motion.Quick))
+        ) {
+            Box(
+                Modifier
+                    .shadow(12.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Ink)
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "Moves land once the rules engine ships",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+            }
         }
     }
 }
 
-<<<<<<< HEAD
-// ── Maze Board ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun MazeBoard(
-    puzzle: PuzzleState,
-    escapable: Set<CellKey>,
-    hintCell: CellKey?,
-    onCellTap: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val level = puzzle.level
-    val allCells = level.arrows.map { CellKey(it.row, it.col) }.toSet()
-    val adjacency = remember(level) { PuzzleEngine.adjacencyPairs(level) }
-
-    BoxWithConstraints(modifier = modifier) {
-        val availableWidth = maxWidth
-        // Calculate cell size based on grid dimensions
-        val cellSize = (availableWidth / level.gridCols).coerceAtMost(72.dp)
-        val boardWidth = cellSize * level.gridCols
-        val boardHeight = cellSize * level.gridRows
-        val lineThickness = cellSize * 0.35f
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(boardHeight),
-            contentAlignment = Alignment.Center
-        ) {
-            // Draw connecting lines (the maze structure)
-            Box(
-                modifier = Modifier
-                    .width(boardWidth)
-                    .height(boardHeight)
-                    .drawWithCache {
-                        val cSize = cellSize.toPx()
-                        val thick = lineThickness.toPx()
-                        val radius = thick / 2f
-
-                        onDrawBehind {
-                            // Draw filled rounded rects at each original cell position
-                            for (cell in allCells) {
-                                val cx = cell.col * cSize + cSize / 2f
-                                val cy = cell.row * cSize + cSize / 2f
-                                val isRemaining = cell in puzzle.remaining
-                                val color = if (isRemaining) Ink.copy(alpha = 0.12f)
-                                    else Blue500.copy(alpha = 0.08f)
-
-                                drawCircle(
-                                    color = color,
-                                    radius = radius,
-                                    center = Offset(cx, cy)
-                                )
-                            }
-
-                            // Draw connections between adjacent cells
-                            for ((a, b) in adjacency) {
-                                val ax = a.col * cSize + cSize / 2f
-                                val ay = a.row * cSize + cSize / 2f
-                                val bx = b.col * cSize + cSize / 2f
-                                val by = b.row * cSize + cSize / 2f
-
-                                val aRemaining = a in puzzle.remaining
-                                val bRemaining = b in puzzle.remaining
-                                val color = when {
-                                    aRemaining && bRemaining -> Ink
-                                    aRemaining || bRemaining -> Ink.copy(alpha = 0.45f)
-                                    else -> Blue500.copy(alpha = 0.25f)
-                                }
-
-                                drawLine(
-                                    color = color,
-                                    start = Offset(ax, ay),
-                                    end = Offset(bx, by),
-                                    strokeWidth = thick,
-                                    cap = StrokeCap.Round
-                                )
-                            }
-
-                            // Draw filled circles at remaining cells (nodes of the maze)
-                            for (cell in allCells) {
-                                if (cell in puzzle.remaining) {
-                                    val cx = cell.col * cSize + cSize / 2f
-                                    val cy = cell.row * cSize + cSize / 2f
-                                    drawCircle(
-                                        color = Ink,
-                                        radius = radius,
-                                        center = Offset(cx, cy)
-                                    )
-                                }
-                            }
-=======
-// ── Board ────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun Board(
-    puzzle: PuzzleState,
-    onCellTap: (row: Int, col: Int) -> Unit,
+    pieces: List<ArrowPiece>,
+    onPieceTap: (ArrowPiece) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = AppTheme.palette
-    val gridSize = puzzle.level.gridSize
 
     Box(
         modifier = modifier
@@ -434,13 +265,13 @@ private fun Board(
             .padding(10.dp)
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val cell = maxWidth / gridSize
+            val cell = maxWidth / GridSize
 
-            // Grid wells
+            // Cell wells first, so arrows always render on top of the grid.
             Column {
-                repeat(gridSize) {
+                repeat(GridSize) {
                     Row {
-                        repeat(gridSize) { _ ->
+                        repeat(GridSize) { _ ->
                             Box(
                                 Modifier
                                     .size(cell)
@@ -448,158 +279,91 @@ private fun Board(
                                     .clip(RoundedCornerShape(9.dp))
                                     .background(palette.canvasSunken.copy(alpha = 0.55f))
                             )
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
                         }
-                    }
-            )
-
-            // Overlay arrows on remaining cells
-            Box(
-                modifier = Modifier
-                    .width(boardWidth)
-                    .height(boardHeight)
-            ) {
-                puzzle.remaining.forEach { (cell, direction) ->
-                    val isHint = cell == hintCell
-                    key(cell) {
-                        ArrowOnMaze(
-                            direction = direction,
-                            isHint = isHint,
-                            cellSize = cellSize,
-                            onTap = { onCellTap(cell.row, cell.col) },
-                            modifier = Modifier
-                                .offset(x = cellSize * cell.col, y = cellSize * cell.row)
-                                .size(cellSize)
-                        )
                     }
                 }
             }
-<<<<<<< HEAD
-=======
 
-            // Arrows
-            puzzle.directions.forEach { (key, direction) ->
-                val isCorrect = puzzle.isComplete || PuzzleEngine.isCellCorrect(puzzle, key)
+            pieces.forEach { piece ->
                 ArrowTile(
-                    direction = direction,
-                    isCorrect = isCorrect,
-                    isComplete = puzzle.isComplete,
-                    onTap = { onCellTap(key.row, key.col) },
+                    piece = piece,
+                    onTap = { onPieceTap(piece) },
                     modifier = Modifier
-                        .offset(x = cell * key.col, y = cell * key.row)
+                        .offset(x = cell * piece.column, y = cell * piece.row)
                         .size(cell)
                 )
             }
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
         }
     }
 }
 
 @Composable
-<<<<<<< HEAD
-private fun ArrowOnMaze(
-    direction: Direction,
-    isHint: Boolean,
-    cellSize: Dp,
-=======
 private fun ArrowTile(
-    direction: Direction,
-    isCorrect: Boolean,
-    isComplete: Boolean,
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
+    piece: ArrowPiece,
     onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-<<<<<<< HEAD
-=======
     val reduced = AppTheme.reducedMotion
-    val rotation = remember { Animatable(direction.degrees) }
+    val nudge = remember { Animatable(0f) }
     var tapCount by remember { mutableIntStateOf(0) }
 
-    // Animate rotation when direction changes
-    LaunchedEffect(direction) {
-        val target = direction.degrees
-        // Handle wrap-around (e.g., 270 -> 0 should go to 360)
-        var current = rotation.value % 360f
-        if (current < 0) current += 360f
-        var t = target % 360f
-        if (t < 0) t += 360f
-
-        // Always rotate clockwise
-        if (t <= current) t += 360f
-
-        if (!reduced) {
-            rotation.animateTo(t, Motion.snappy())
-        } else {
-            rotation.snapTo(t)
+    // A tap always produces motion in the arrow's own direction, immediately.
+    // When the rules engine arrives this becomes either a slide-off or a refusal.
+    LaunchedEffect(tapCount) {
+        if (tapCount > 0 && !reduced) {
+            nudge.animateTo(1f, Motion.snappy())
+            nudge.animateTo(0f, Motion.bouncy())
         }
     }
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
 
     Box(
         modifier = modifier
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-<<<<<<< HEAD
-                role = Role.Button,
-                onClick = onTap
-            )
-            .pressScale(interactionSource, pressedScale = 0.85f)
-            .then(
-                if (isHint) Modifier.graphicsLayer {
-                    // Pulsing glow for hint
-                } else Modifier
-            )
-            .padding(cellSize * 0.18f),
-        contentAlignment = Alignment.Center
-    ) {
-        ArrowGlyph(
-            direction = direction,
-            color = if (isHint) Blue500 else Color.White,
-=======
                 role = Role.Button
             ) {
                 tapCount++
                 onTap()
             }
             .pressScale(interactionSource, pressedScale = 0.9f)
+            .graphicsLayer {
+                val travel = 6f * density * nudge.value
+                translationX = piece.direction.dx * travel
+                translationY = piece.direction.dy * travel
+            }
             .padding(6.dp),
         contentAlignment = Alignment.Center
     ) {
         ArrowGlyph(
-            rotationDegrees = rotation.value,
-            color = when {
-                isComplete -> Blue500
-                isCorrect -> Blue500.copy(alpha = 0.7f)
-                else -> Ink
-            },
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
+            direction = piece.direction,
+            color = Ink,
             modifier = Modifier.fillMaxSize()
         )
     }
 }
 
+/** A single arrow, drawn as a stroked path so it stays crisp at any cell size. */
 @Composable
 private fun ArrowGlyph(
-    rotationDegrees: Float,
+    direction: Direction,
     color: Color,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .graphicsLayer { rotationZ = rotationDegrees }
+            .graphicsLayer { rotationZ = direction.degrees }
             .drawWithCache {
                 val w = size.width
                 val h = size.height
-                val strokeWidth = w * 0.18f
-                val tipX = w * 0.88f
+                val strokeWidth = w * 0.16f
+                val tipX = w * 0.86f
                 val midY = h * 0.5f
-                val headSpan = h * 0.28f
+                val headSpan = h * 0.26f
 
                 val shaft = Path().apply {
-                    moveTo(w * 0.12f, midY)
+                    moveTo(w * 0.14f, midY)
                     lineTo(tipX - strokeWidth * 0.4f, midY)
                 }
                 val head = Path().apply {
@@ -621,361 +385,65 @@ private fun ArrowGlyph(
     )
 }
 
-<<<<<<< HEAD
-// ── Lives ────────────────────────────────────────────────────────────────────
-=======
-// ── Progress bar ─────────────────────────────────────────────────────────────
-
-@Composable
-private fun ProgressIndicator(
-    correct: Int,
-    total: Int,
-    modifier: Modifier = Modifier
-) {
-    val fraction = if (total > 0) correct.toFloat() / total else 0f
-    val palette = AppTheme.palette
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(CircleShape)
-            .background(palette.canvasSunken)
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(6.dp)
-                .clip(CircleShape)
-                .background(Blue500)
-        )
-    }
-}
-
-// ── Tutorial overlay ─────────────────────────────────────────────────────────
-
-@Composable
-private fun TutorialOverlay(onDismiss: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                SoundEngine.playButton()
-                onDismiss()
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .enterFromBelow(travel = 30f)
-                .padding(horizontal = 40.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier
-                    .pulse(min = 0.95f, max = 1.08f, periodMillis = 2200)
-                    .size(48.dp)
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                text = "Tap arrows to rotate them",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                text = "Make all arrows form a connected path.\nEach arrow should point to the next one in the chain.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.82f),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(28.dp))
-
-            Text(
-                text = "Tap anywhere to start",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.55f)
-            )
-        }
-    }
-}
-
-// ── Win dialog ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun WinDialog(
-    levelId: Int,
-    moves: Int,
-    onNext: () -> Unit,
-    onExit: () -> Unit
-) {
-    Dialog(
-        onDismissRequest = onExit,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val cardState = remember { MutableTransitionState(false) }
-            cardState.targetState = true
-
-            AnimatedVisibility(
-                visibleState = cardState,
-                enter = fadeIn(tween(Motion.Normal)) +
-                    scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()),
-                exit = fadeOut(tween(Motion.Quick)) + scaleOut(targetScale = 0.95f)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(26.dp),
-                    color = AppTheme.palette.surface,
-                    shadowElevation = 24.dp
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "🎉",
-                            style = MaterialTheme.typography.displayLarge,
-                            modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800)
-                        )
-
-                        Spacer(Modifier.height(16.dp))
-
-                        Text(
-                            text = "Level Complete!",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-
-                        Text(
-                            text = "Level $levelId solved in $moves moves",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(Modifier.height(28.dp))
-
-                        if (levelId < 6) {
-                            PrimaryPillButton(
-                                text = "Next Level",
-                                onClick = onNext,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(12.dp))
-                        }
-
-                        Text(
-                            text = if (levelId < 6) "Back to levels" else "Done",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Blue500,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onExit() }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Supporting composables ───────────────────────────────────────────────────
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-
 @Composable
 private fun LivesIndicator(lives: Int, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        repeat(3) { i ->
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
             Icon(
-                Icons.Rounded.Favorite, null,
-                tint = if (i < lives) Red500 else Red500.copy(alpha = 0.22f),
+                imageVector = Icons.Rounded.Favorite,
+                contentDescription = null,
+                tint = if (index < lives) Red500 else Red500.copy(alpha = 0.22f),
                 modifier = Modifier.size(18.dp)
             )
         }
     }
 }
 
-// ── Tool button ──────────────────────────────────────────────────────────────
-
 @Composable
 private fun ToolButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    badgeCount: Int? = null
+    modifier: Modifier = Modifier
 ) {
     val palette = AppTheme.palette
-    val src = remember { MutableInteractionSource() }
+    val interactionSource = remember { MutableInteractionSource() }
+
     Column(
         modifier = modifier
-            .pressScale(src, pressedScale = 0.94f)
-            .shadow(8.dp, RoundedCornerShape(16.dp), ambientColor = Ink.copy(0.08f), spotColor = Ink.copy(0.12f))
+            .pressScale(interactionSource, pressedScale = 0.94f)
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = Ink.copy(alpha = 0.08f),
+                spotColor = Ink.copy(alpha = 0.12f)
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(palette.surface)
-            .clickable(src, null, role = Role.Button, onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
             .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box {
-<<<<<<< HEAD
-            Icon(icon, null, tint = Blue500, modifier = Modifier.size(22.dp))
-            if (badgeCount != null && badgeCount > 0) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-4).dp)
-                        .size(16.dp).clip(CircleShape).background(Blue500),
-                    contentAlignment = Alignment.Center
-                ) { Text("$badgeCount", style = MaterialTheme.typography.labelSmall, color = Color.White) }
-=======
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Blue500,
-                modifier = Modifier.size(22.dp)
-            )
-            if (badgeCount != null && badgeCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 8.dp, y = (-4).dp)
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(Blue500),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "$badgeCount",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White
-                    )
-                }
->>>>>>> e2e958806e5734d2b079726c6ebba9ed15f7b04c
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Blue500,
+            modifier = Modifier.size(22.dp)
+        )
         Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = palette.inkSoft)
-    }
-}
-
-// ── Tutorial overlay ─────────────────────────────────────────────────────────
-
-@Composable
-private fun TutorialOverlay(onDismiss: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(0.55f))
-            .clickable(remember { MutableInteractionSource() }, null) {
-                SoundEngine.playButton(); onDismiss()
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.enterFromBelow(travel = 30f).padding(horizontal = 40.dp)
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White,
-                modifier = Modifier.pulse(min = 0.95f, max = 1.08f).size(48.dp))
-            Spacer(Modifier.height(20.dp))
-            Text("Tap arrows to escape", style = MaterialTheme.typography.headlineMedium,
-                color = Color.White, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(12.dp))
-            Text("Tap an arrow to send it flying in its direction.\nIt can only escape if nothing blocks the path!\nClear all arrows to complete the level.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(0.82f), textAlign = TextAlign.Center)
-            Spacer(Modifier.height(28.dp))
-            Text("Tap anywhere to start", style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(0.55f))
-        }
-    }
-}
-
-// ── Win dialog ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun WinDialog(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onExit,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center) {
-            val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(0.85f, animationSpec = Motion.playful()),
-                exit = fadeOut(tween(Motion.Quick)) + scaleOut(targetScale = 0.95f)) {
-                Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
-                    Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🎉", style = MaterialTheme.typography.displayLarge,
-                            modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
-                        Spacer(Modifier.height(16.dp))
-                        Text("Level Complete!", style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Cleared in $moves moves", style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(28.dp))
-                        if (levelId < 6) {
-                            PrimaryPillButton("Next Level", onClick = onNext, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(12.dp))
-                        }
-                        Text(if (levelId < 6) "Back to levels" else "Done",
-                            style = MaterialTheme.typography.titleMedium, color = Blue500,
-                            modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Game over dialog ─────────────────────────────────────────────────────────
-
-@Composable
-private fun GameOverDialog(onRetry: () -> Unit, onExit: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onExit,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center) {
-            val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(0.85f, animationSpec = Motion.bouncy()),
-                exit = fadeOut(tween(Motion.Quick))) {
-                Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
-                    Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Out of lives!", style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Tap on arrows with a clear path ahead.\nBlocked arrows cost a life!",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(28.dp))
-                        PrimaryPillButton("Try Again", onClick = onRetry, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(12.dp))
-                        Text("Back to levels", style = MaterialTheme.typography.titleMedium,
-                            color = Blue500, modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
-                    }
-                }
-            }
-        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.inkSoft
+        )
     }
 }

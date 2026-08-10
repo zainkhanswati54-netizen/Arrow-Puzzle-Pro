@@ -43,7 +43,6 @@ import com.arrowpuzzle.game.core.design.Lime500
 import com.arrowpuzzle.game.core.design.Orange600
 import com.arrowpuzzle.game.core.design.Red500
 import com.arrowpuzzle.game.core.design.Teal500
-import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.ui.ComingSoonScreen
 import com.arrowpuzzle.game.core.ui.SoftFade
@@ -51,7 +50,6 @@ import com.arrowpuzzle.game.feature.consent.ConsentScreen
 import com.arrowpuzzle.game.feature.daily.DailyScreen
 import com.arrowpuzzle.game.feature.game.GameScreen
 import com.arrowpuzzle.game.feature.home.HomeScreen
-import com.arrowpuzzle.game.feature.levels.LevelSelectScreen
 import com.arrowpuzzle.game.feature.me.MeScreen
 import com.arrowpuzzle.game.feature.settings.SettingsScreen
 import com.arrowpuzzle.game.feature.splash.SplashScreen
@@ -107,9 +105,6 @@ fun ArrowPuzzleApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val settings by appViewModel.settings.collectAsState()
-
-    // Keep sound engine in sync with user's preference
-    SoundEngine.setEnabled(settings.soundEnabled)
 
     val switchTab: (String) -> Unit = { route ->
         if (route != currentRoute) {
@@ -171,18 +166,9 @@ fun ArrowPuzzleApp(
                 // --- Tabs ---------------------------------------------------
                 composable(Routes.Home) {
                     HomeScreen(
-                        onPlayCampaign = { navController.navigate(Routes.LevelSelect) },
+                        onPlayCampaign = { navController.navigate(Routes.game(GameMode.Campaign)) },
                         onPlayDaily = { navController.navigate(Routes.game(GameMode.Daily)) },
                         onOpenTournament = { navController.navigate(Routes.Tournament) }
-                    )
-                }
-
-                composable(Routes.LevelSelect) {
-                    LevelSelectScreen(
-                        onLevelSelected = { levelId ->
-                            navController.navigate(Routes.game(GameMode.Campaign, levelId))
-                        },
-                        onBack = navController::popBackStack
                     )
                 }
 
@@ -201,16 +187,9 @@ fun ArrowPuzzleApp(
 
                 // --- Pushed detail screens ----------------------------------
                 composable(Routes.Game) { entry ->
-                    val mode = entry.arguments?.getString("mode") ?: GameMode.Campaign
-                    val levelId = entry.arguments?.getString("levelId")?.toIntOrNull() ?: 1
                     GameScreen(
-                        mode = mode,
-                        levelId = levelId,
-                        onExit = navController::popBackStack,
-                        onNextLevel = { nextId ->
-                            navController.popBackStack()
-                            navController.navigate(Routes.game(mode, nextId))
-                        }
+                        mode = entry.arguments?.getString("mode") ?: GameMode.Campaign,
+                        onExit = navController::popBackStack
                     )
                 }
 
@@ -260,8 +239,8 @@ fun ArrowPuzzleApp(
                 composable(Routes.About) {
                     ComingSoonScreen(
                         title = "About Game",
-                        headline = "Arrow Puzzle Pro",
-                        body = "Version 1.0.0 — Tap arrows to rotate them and form a connected path. Credits, licences and release notes land here.",
+                        headline = "Arrow Puzzle",
+                        body = "Version 0.1.0 — scaffold build. Credits, licences and release notes land here.",
                         icon = Icons.Rounded.Info,
                         accent = Blue500,
                         onBack = navController::popBackStack

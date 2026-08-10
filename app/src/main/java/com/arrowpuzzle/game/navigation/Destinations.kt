@@ -22,10 +22,8 @@ object Routes {
     const val Daily = "daily"
     const val Me = "me"
 
-    const val LevelSelect = "level_select"
-
-    const val Game = "game/{mode}/{levelId}"
-    fun game(mode: String = GameMode.Campaign, levelId: Int = 1) = "game/$mode/$levelId"
+    const val Game = "game/{mode}"
+    fun game(mode: String = GameMode.Campaign) = "game/$mode"
 
     const val Settings = "settings"
     const val Awards = "awards"
