@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,6 +59,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.design.AppTheme
@@ -78,447 +80,212 @@ import com.arrowpuzzle.game.core.ui.PrimaryPillButton
 
 @Composable
 fun GameScreen(
-    mode: String,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
-    levelId: Int = 1,
-    onNextLevel: ((Int) -> Unit)? = null
+    levelId: Int = 1
 ) {
     val context = LocalContext.current
     val vm: GameViewModel = viewModel(
         key = "game_$levelId",
         factory = GameViewModel.factory(context, levelId)
     )
-    val uiState by vm.state.collectAsState()
-    val puzzle = uiState.puzzle ?: return
+    val ui by vm.state.collectAsState()
+    val puzzle = ui.puzzle
     val palette = AppTheme.palette
     val haptics = LocalHapticFeedback.current
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.canvas)
-    ) {
+    Box(modifier.fillMaxSize().background(palette.canvas)) {
         ArrowBackdrop(tint = Color(0xFFE8EDF4))
 
-        Column(Modifier.fillMaxSize()) {
-            AppTopBar(
-                title = "Level ${puzzle.level.id}",
-                onBack = onExit,
-                trailing = { LivesIndicator(lives = puzzle.lives) }
-            )
+        if (ui.loading || puzzle == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Blue500)
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                AppTopBar(
+                    title = "Level ${puzzle.level.id}",
+                    onBack = onExit,
+                    trailing = { LivesRow(puzzle.lives) }
+                )
 
-            // Arrows remaining + difficulty
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Flag icon + remaining count
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "🏁", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "${puzzle.remaining.size}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = palette.ink
-                    )
+                // Arrow count + difficulty
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🏁", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(6.dp))
+                        Text("${puzzle.remaining.size}", style = MaterialTheme.typography.titleMedium, color = palette.ink)
+                    }
+                    Text(puzzle.level.difficulty.name, style = MaterialTheme.typography.labelMedium, color = palette.inkMuted)
                 }
-                Text(
-                    text = puzzle.level.difficulty.name,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = palette.inkMuted
+
+                Spacer(Modifier.weight(0.05f))
+
+                // ── MAZE ──
+                MazeBoard(
+                    puzzle = puzzle,
+                    hintCell = ui.hintCell,
+                    onCellTap = { r, c -> haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onCellTap(r, c) },
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)
                 )
+
+                Spacer(Modifier.weight(0.05f))
+
+                // Buttons
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                ) {
+                    ToolBtn(Icons.Rounded.Lightbulb, "Hint", puzzle.hintsRemaining) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onHint()
+                    }
+                    ToolBtn(Icons.Rounded.Refresh, "Retry") {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress); SoundEngine.playButton(); vm.retry()
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            // The maze board
-            MazeBoard(
-                puzzle = puzzle,
-                escapable = uiState.escapable,
-                hintCell = uiState.hintCell,
-                onCellTap = { row, col ->
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    vm.onCellTap(row, col)
-                },
-                modifier = Modifier
-                    .enterFromBelow(delayMillis = Motion.stagger(1), travel = 20f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // Tool buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .enterFromBelow(delayMillis = Motion.stagger(2))
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-            ) {
-                ToolButton(
-                    label = "Hint",
-                    badgeCount = puzzle.hintsRemaining,
-                    icon = Icons.Rounded.Lightbulb,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        vm.onHint()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                ToolButton(
-                    label = "Retry",
-                    icon = Icons.Rounded.Refresh,
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        SoundEngine.playButton()
-                        vm.retry()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(Modifier.weight(1f))
         }
 
-        // Tutorial overlay
-        if (puzzle.level.isTutorial && uiState.tutorialStep == 0) {
-            TutorialOverlay(onDismiss = { vm.dismissTutorial() })
-        }
-
+        // Tutorial
+        if (puzzle?.level?.isTutorial == true && ui.tutorialStep == 0) TutOverlay { vm.dismissTutorial() }
         // Win
-        if (uiState.showWinCelebration) {
-            WinDialog(
-                levelId = puzzle.level.id,
-                moves = puzzle.moveCount,
-                onNext = {
-                    vm.dismissWin()
-                    onNextLevel?.invoke(puzzle.level.id + 1) ?: onExit()
-                },
-                onExit = { vm.dismissWin(); onExit() }
-            )
-        }
-
-        // Game Over
-        if (uiState.showGameOver) {
-            GameOverDialog(
-                onRetry = { vm.retry() },
-                onExit = onExit
-            )
-        }
+        if (ui.showWinCelebration && puzzle != null) WinDlg(puzzle.level.id, puzzle.moveCount, { vm.nextLevel() }, onExit)
+        // Game over
+        if (ui.showGameOver) GameOverDlg({ vm.retry() }, onExit)
     }
 }
 
-// ── Maze Board ───────────────────────────────────────────────────────────────
+// ── MAZE BOARD ───────────────────────────────────────────────────────────────
 
 @Composable
-private fun MazeBoard(
-    puzzle: PuzzleState,
-    escapable: Set<CellKey>,
-    hintCell: CellKey?,
-    onCellTap: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
     val level = puzzle.level
-    val allCells = level.arrows.map { CellKey(it.row, it.col) }.toSet()
-    val adjacency = remember(level) { PuzzleEngine.adjacencyPairs(level) }
+    val allCells = remember(level) { level.arrows.map { CellKey(it.row, it.col) }.toSet() }
+    val adjPairs = remember(level) { PuzzleEngine.adjacencyPairs(level) }
 
-    BoxWithConstraints(modifier = modifier) {
-        val availableWidth = maxWidth
-        // Calculate cell size based on grid dimensions
-        val cellSize = (availableWidth / level.gridCols).coerceAtMost(72.dp)
-        val boardWidth = cellSize * level.gridCols
-        val boardHeight = cellSize * level.gridRows
-        val lineThickness = cellSize * 0.35f
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val cellW = maxWidth / level.gridCols
+        val cellH = maxHeight / level.gridRows
+        val cellSize = min(cellW, cellH).coerceAtMost(64.dp)
+        val bw = cellSize * level.gridCols
+        val bh = cellSize * level.gridRows
+        val lineW = cellSize * 0.45f
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(boardHeight),
-            contentAlignment = Alignment.Center
-        ) {
-            // Draw connecting lines (the maze structure)
-            Box(
-                modifier = Modifier
-                    .width(boardWidth)
-                    .height(boardHeight)
-                    .drawWithCache {
-                        val cSize = cellSize.toPx()
-                        val thick = lineThickness.toPx()
-                        val radius = thick / 2f
-
-                        onDrawBehind {
-                            // Draw filled rounded rects at each original cell position
-                            for (cell in allCells) {
-                                val cx = cell.col * cSize + cSize / 2f
-                                val cy = cell.row * cSize + cSize / 2f
-                                val isRemaining = cell in puzzle.remaining
-                                val color = if (isRemaining) Ink.copy(alpha = 0.12f)
-                                    else Blue500.copy(alpha = 0.08f)
-
-                                drawCircle(
-                                    color = color,
-                                    radius = radius,
-                                    center = Offset(cx, cy)
-                                )
-                            }
-
-                            // Draw connections between adjacent cells
-                            for ((a, b) in adjacency) {
-                                val ax = a.col * cSize + cSize / 2f
-                                val ay = a.row * cSize + cSize / 2f
-                                val bx = b.col * cSize + cSize / 2f
-                                val by = b.row * cSize + cSize / 2f
-
-                                val aRemaining = a in puzzle.remaining
-                                val bRemaining = b in puzzle.remaining
-                                val color = when {
-                                    aRemaining && bRemaining -> Ink
-                                    aRemaining || bRemaining -> Ink.copy(alpha = 0.45f)
-                                    else -> Blue500.copy(alpha = 0.25f)
-                                }
-
-                                drawLine(
-                                    color = color,
-                                    start = Offset(ax, ay),
-                                    end = Offset(bx, by),
-                                    strokeWidth = thick,
-                                    cap = StrokeCap.Round
-                                )
-                            }
-
-                            // Draw filled circles at remaining cells (nodes of the maze)
-                            for (cell in allCells) {
-                                if (cell in puzzle.remaining) {
-                                    val cx = cell.col * cSize + cSize / 2f
-                                    val cy = cell.row * cSize + cSize / 2f
-                                    drawCircle(
-                                        color = Ink,
-                                        radius = radius,
-                                        center = Offset(cx, cy)
-                                    )
-                                }
-                            }
-                        }
-                    }
-            )
-
-            // Overlay arrows on remaining cells
-            Box(
-                modifier = Modifier
-                    .width(boardWidth)
-                    .height(boardHeight)
-            ) {
-                puzzle.remaining.forEach { (cell, direction) ->
-                    val isHint = cell == hintCell
-                    key(cell) {
-                        ArrowOnMaze(
-                            direction = direction,
-                            isHint = isHint,
-                            cellSize = cellSize,
-                            onTap = { onCellTap(cell.row, cell.col) },
-                            modifier = Modifier
-                                .offset(x = cellSize * cell.col, y = cellSize * cell.row)
-                                .size(cellSize)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ArrowOnMaze(
-    direction: Direction,
-    isHint: Boolean,
-    cellSize: Dp,
-    onTap: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Box(
-        modifier = modifier
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                onClick = onTap
-            )
-            .pressScale(interactionSource, pressedScale = 0.85f)
-            .then(
-                if (isHint) Modifier.graphicsLayer {
-                    // Pulsing glow for hint
-                } else Modifier
-            )
-            .padding(cellSize * 0.18f),
-        contentAlignment = Alignment.Center
-    ) {
-        ArrowGlyph(
-            direction = direction,
-            color = if (isHint) Blue500 else Color.White,
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-@Composable
-private fun ArrowGlyph(
-    direction: Direction,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .graphicsLayer { rotationZ = direction.degrees }
-            .drawWithCache {
-                val w = size.width
-                val h = size.height
-                val strokeWidth = w * 0.18f
-                val tipX = w * 0.88f
-                val midY = h * 0.5f
-                val headSpan = h * 0.28f
-
-                val shaft = Path().apply {
-                    moveTo(w * 0.12f, midY)
-                    lineTo(tipX - strokeWidth * 0.4f, midY)
-                }
-                val head = Path().apply {
-                    moveTo(tipX - headSpan, midY - headSpan)
-                    lineTo(tipX, midY)
-                    lineTo(tipX - headSpan, midY + headSpan)
-                }
-                val stroke = Stroke(
-                    width = strokeWidth,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round
-                )
-
+        Box(Modifier.width(bw).height(bh)) {
+            // Draw maze structure
+            Box(Modifier.fillMaxSize().drawWithCache {
+                val cs = cellSize.toPx()
+                val lw = lineW.toPx()
                 onDrawBehind {
-                    drawPath(shaft, color, style = stroke)
-                    drawPath(head, color, style = stroke)
+                    // Connecting lines
+                    for ((a, b) in adjPairs) {
+                        val ax = a.col * cs + cs / 2; val ay = a.row * cs + cs / 2
+                        val bx = b.col * cs + cs / 2; val by = b.row * cs + cs / 2
+                        val aR = a in puzzle.remaining; val bR = b in puzzle.remaining
+                        val col = when { aR && bR -> Ink; aR || bR -> Ink.copy(0.3f); else -> Blue500.copy(0.15f) }
+                        drawLine(col, Offset(ax, ay), Offset(bx, by), lw, StrokeCap.Round)
+                    }
+                    // Cell nodes
+                    for (c in allCells) {
+                        val cx = c.col * cs + cs / 2; val cy = c.row * cs + cs / 2
+                        val inR = c in puzzle.remaining
+                        drawCircle(if (inR) Ink else Blue500.copy(0.12f), lw / 2, Offset(cx, cy))
+                    }
+                }
+            })
+
+            // Arrow glyphs
+            puzzle.remaining.forEach { (cell, dir) ->
+                key(cell) {
+                    ArrowTile(dir, cell == hintCell, cellSize, { onCellTap(cell.row, cell.col) },
+                        Modifier.offset(cellSize * cell.col, cellSize * cell.row).size(cellSize))
                 }
             }
-    )
-}
-
-// ── Lives ────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun LivesIndicator(lives: Int, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        repeat(3) { i ->
-            Icon(
-                Icons.Rounded.Favorite, null,
-                tint = if (i < lives) Red500 else Red500.copy(alpha = 0.22f),
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
 
-// ── Tool button ──────────────────────────────────────────────────────────────
+@Composable
+private fun ArrowTile(dir: Direction, isHint: Boolean, cellSize: Dp, onTap: () -> Unit, modifier: Modifier) {
+    val src = remember { MutableInteractionSource() }
+    Box(modifier.clickable(src, null, role = Role.Button, onClick = onTap)
+        .pressScale(src, 0.85f).padding(cellSize * 0.15f), Alignment.Center) {
+        val color = if (isHint) Blue500 else Color.White
+        Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = dir.degrees }
+            .drawWithCache {
+                val w = size.width; val h = size.height; val sw = w * 0.19f
+                val tipX = w * 0.86f; val midY = h * 0.5f; val hs = h * 0.26f
+                val shaft = Path().apply { moveTo(w * 0.14f, midY); lineTo(tipX - sw * 0.4f, midY) }
+                val head = Path().apply { moveTo(tipX - hs, midY - hs); lineTo(tipX, midY); lineTo(tipX - hs, midY + hs) }
+                val stroke = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                onDrawBehind { drawPath(shaft, color, style = stroke); drawPath(head, color, style = stroke) }
+            })
+    }
+}
+
+// ── UI COMPONENTS ────────────────────────────────────────────────────────────
 
 @Composable
-private fun ToolButton(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    badgeCount: Int? = null
-) {
-    val palette = AppTheme.palette
-    val src = remember { MutableInteractionSource() }
-    Column(
-        modifier = modifier
-            .pressScale(src, pressedScale = 0.94f)
-            .shadow(8.dp, RoundedCornerShape(16.dp), ambientColor = Ink.copy(0.08f), spotColor = Ink.copy(0.12f))
-            .clip(RoundedCornerShape(16.dp))
-            .background(palette.surface)
-            .clickable(src, null, role = Role.Button, onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+private fun LivesRow(lives: Int) = Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    repeat(3) { Icon(Icons.Rounded.Favorite, null, tint = if (it < lives) Red500 else Red500.copy(0.22f), modifier = Modifier.size(18.dp)) }
+}
+
+@Composable
+private fun ToolBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, badge: Int? = null, onClick: () -> Unit) {
+    val pal = AppTheme.palette; val src = remember { MutableInteractionSource() }
+    Column(Modifier.pressScale(src, 0.94f).shadow(8.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
+        .background(pal.surface).clickable(src, null, role = Role.Button, onClick = onClick)
+        .padding(horizontal = 24.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box {
-            Icon(icon, null, tint = Blue500, modifier = Modifier.size(22.dp))
-            if (badgeCount != null && badgeCount > 0) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-4).dp)
-                        .size(16.dp).clip(CircleShape).background(Blue500),
-                    contentAlignment = Alignment.Center
-                ) { Text("$badgeCount", style = MaterialTheme.typography.labelSmall, color = Color.White) }
+            Icon(icon, null, tint = Blue500, modifier = Modifier.size(24.dp))
+            if (badge != null && badge > 0) Box(Modifier.align(Alignment.TopEnd).offset(8.dp, (-4).dp).size(16.dp).clip(CircleShape).background(Blue500), Alignment.Center) {
+                Text("$badge", style = MaterialTheme.typography.labelSmall, color = Color.White)
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = palette.inkSoft)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = pal.inkSoft)
     }
 }
 
-// ── Tutorial overlay ─────────────────────────────────────────────────────────
-
 @Composable
-private fun TutorialOverlay(onDismiss: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(0.55f))
-            .clickable(remember { MutableInteractionSource() }, null) {
-                SoundEngine.playButton(); onDismiss()
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.enterFromBelow(travel = 30f).padding(horizontal = 40.dp)
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White,
-                modifier = Modifier.pulse(min = 0.95f, max = 1.08f).size(48.dp))
+private fun TutOverlay(onDismiss: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.55f))
+        .clickable(remember { MutableInteractionSource() }, null) { SoundEngine.playButton(); onDismiss() }, Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.enterFromBelow(travel = 30f).padding(40.dp)) {
+            Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White, modifier = Modifier.pulse().size(48.dp))
             Spacer(Modifier.height(20.dp))
-            Text("Tap arrows to escape", style = MaterialTheme.typography.headlineMedium,
-                color = Color.White, textAlign = TextAlign.Center)
+            Text("Tap arrows to escape!", style = MaterialTheme.typography.headlineMedium, color = Color.White, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
-            Text("Tap an arrow to send it flying in its direction.\nIt can only escape if nothing blocks the path!\nClear all arrows to complete the level.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(0.82f), textAlign = TextAlign.Center)
+            Text("Tap an arrow to send it flying off the board.\nIt only moves if nothing blocks the path!\nClear all arrows to complete the level.", style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(0.82f), textAlign = TextAlign.Center)
             Spacer(Modifier.height(28.dp))
-            Text("Tap anywhere to start", style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(0.55f))
+            Text("Tap anywhere to start", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(0.55f))
         }
     }
 }
 
-// ── Win dialog ───────────────────────────────────────────────────────────────
-
 @Composable
-private fun WinDialog(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onExit,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center) {
+private fun WinDlg(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()),
-                exit = fadeOut(tween(Motion.Quick)) + scaleOut(targetScale = 0.95f)) {
+            AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(0.85f, animationSpec = Motion.playful()), exit = fadeOut(tween(200)) + scaleOut(0.95f)) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🎉", style = MaterialTheme.typography.displayLarge,
-                            modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
+                        Text("🎉", style = MaterialTheme.typography.displayLarge, modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
                         Spacer(Modifier.height(16.dp))
-                        Text("Level Complete!", style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink, textAlign = TextAlign.Center)
+                        Text("Level Complete!", style = MaterialTheme.typography.headlineMedium, color = AppTheme.palette.ink)
                         Spacer(Modifier.height(8.dp))
-                        Text("Cleared in $moves moves", style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
+                        Text("Cleared in $moves moves", style = MaterialTheme.typography.bodyLarge, color = AppTheme.palette.inkMuted)
                         Spacer(Modifier.height(28.dp))
-                        if (levelId < 6) {
-                            PrimaryPillButton("Next Level", onClick = onNext, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(12.dp))
-                        }
-                        Text(if (levelId < 6) "Back to levels" else "Done",
-                            style = MaterialTheme.typography.titleMedium, color = Blue500,
+                        PrimaryPillButton("Next Level", onNext, Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(12.dp))
+                        Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,
                             modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
                     }
                 }
@@ -527,31 +294,22 @@ private fun WinDialog(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -
     }
 }
 
-// ── Game over dialog ─────────────────────────────────────────────────────────
-
 @Composable
-private fun GameOverDialog(onRetry: () -> Unit, onExit: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onExit,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(horizontal = 28.dp),
-            contentAlignment = Alignment.Center) {
+private fun GameOverDlg(onRetry: () -> Unit, onExit: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(initialScale = 0.85f, animationSpec = Motion.bouncy()),
-                exit = fadeOut(tween(Motion.Quick))) {
+            AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(0.85f, animationSpec = Motion.bouncy()), exit = fadeOut(tween(200))) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Out of lives!", style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink, textAlign = TextAlign.Center)
+                        Text("Out of lives!", style = MaterialTheme.typography.headlineMedium, color = AppTheme.palette.ink)
                         Spacer(Modifier.height(8.dp))
-                        Text("Tap on arrows with a clear path ahead.\nBlocked arrows cost a life!",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
+                        Text("Only tap arrows with a clear path ahead!", style = MaterialTheme.typography.bodyLarge, color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(28.dp))
-                        PrimaryPillButton("Try Again", onClick = onRetry, modifier = Modifier.fillMaxWidth())
+                        PrimaryPillButton("Try Again", onRetry, Modifier.fillMaxWidth())
                         Spacer(Modifier.height(12.dp))
-                        Text("Back to levels", style = MaterialTheme.typography.titleMedium,
-                            color = Blue500, modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
+                        Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,
+                            modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
                     }
                 }
             }
