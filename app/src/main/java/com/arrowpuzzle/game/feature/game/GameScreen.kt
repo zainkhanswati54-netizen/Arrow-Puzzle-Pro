@@ -500,7 +500,7 @@ private fun WinDialog(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -
             contentAlignment = Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
             AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(0.85f, animationSpec = Motion.playful()),
+                scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()),
                 exit = fadeOut(tween(Motion.Quick)) + scaleOut(targetScale = 0.95f)) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -537,7 +537,7 @@ private fun GameOverDialog(onRetry: () -> Unit, onExit: () -> Unit) {
             contentAlignment = Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
             AnimatedVisibility(s, enter = fadeIn(tween(Motion.Normal)) +
-                scaleIn(0.85f, animationSpec = Motion.bouncy()),
+                scaleIn(initialScale = 0.85f, animationSpec = Motion.bouncy()),
                 exit = fadeOut(tween(Motion.Quick))) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
