@@ -25,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,19 +38,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Green500
 import com.arrowpuzzle.game.core.design.Ink
-import com.arrowpuzzle.game.core.game.Levels
+import com.arrowpuzzle.game.core.game.Difficulty
+import com.arrowpuzzle.game.core.game.LevelGenerator
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
 import com.arrowpuzzle.game.core.ui.AppTopBar
 import com.arrowpuzzle.game.core.ui.ArrowBackdrop
-import com.arrowpuzzle.game.feature.game.ProgressViewModel
+import com.arrowpuzzle.game.feature.game.GameViewModel
+
+/** Lightweight per-level summary for the grid — avoids generating full arrow layouts. */
+private data class LevelSummary(val id: Int, val difficulty: Difficulty)
+
+/** Total number of levels shown on the select screen (the game itself generates unlimited levels). */
+private const val TOTAL_LEVELS = 60
 
 @Composable
 fun LevelSelectScreen(
@@ -60,10 +65,11 @@ fun LevelSelectScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val vm: ProgressViewModel = viewModel(factory = ProgressViewModel.factory(context))
-    val highestCompleted by vm.highestCompleted.collectAsState()
+    // The highest level number currently unlocked (same source of truth used by ArrowNavHost).
+    val unlockedLevel by GameViewModel.readProgress(context).collectAsState(initial = 1)
+    val highestCompleted = (unlockedLevel - 1).coerceAtLeast(0)
     val palette = AppTheme.palette
-    val levels = Levels.all
+    val levels = remember { (1..TOTAL_LEVELS).map { LevelSummary(it, LevelGenerator.difficultyFor(it)) } }
 
     Box(
         modifier = modifier
@@ -110,8 +116,8 @@ fun LevelSelectScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 items(levels, key = { it.id }) { level ->
-                    val isUnlocked = level.id <= highestCompleted + 1
-                    val isCompleted = level.id <= highestCompleted
+                    val isUnlocked = level.id <= unlockedLevel
+                    val isCompleted = level.id < unlockedLevel
 
                     LevelCard(
                         levelId = level.id,

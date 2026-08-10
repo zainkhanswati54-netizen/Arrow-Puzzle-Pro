@@ -105,6 +105,9 @@ object LevelGenerator {
         return Level(levelNum, rows, cols, arrows, diff, isTutorial = levelNum == 1)
     }
 
+    /** Lightweight difficulty lookup for a level number, without generating its arrows. */
+    fun difficultyFor(levelNum: Int): Difficulty = paramsFor(levelNum).diff
+
     /** Difficulty curve matching PDF Section 6. */
     private fun paramsFor(n: Int): LevelParams {
         return when {
