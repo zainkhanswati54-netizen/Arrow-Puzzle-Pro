@@ -274,7 +274,7 @@ private fun WinDlg(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -> U
     androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()), exit = fadeOut(tween(200)) + scaleOut(0.95f)) {
+            AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()), exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.95f)) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🎉", style = MaterialTheme.typography.displayLarge, modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
