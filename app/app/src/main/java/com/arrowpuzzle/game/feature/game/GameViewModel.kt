@@ -38,7 +38,11 @@ data class GameUiState(
     val loading: Boolean = true
 )
 
-class GameViewModel(private val context: Context, startLevel: Int) : ViewModel() {
+class GameViewModel(
+    private val context: Context,
+    startLevel: Int,
+    private val isDaily: Boolean = false
+) : ViewModel() {
     private val _state = MutableStateFlow(GameUiState())
     val state: StateFlow<GameUiState> = _state.asStateFlow()
     private var currentLevelNum = startLevel
@@ -94,7 +98,9 @@ class GameViewModel(private val context: Context, startLevel: Int) : ViewModel()
             showGameOver = next.isGameOver,
             tutorialStep = if (_state.value.tutorialStep == 0) 1 else _state.value.tutorialStep
         )
-        if (next.isComplete) saveProgress(currentLevelNum + 1)
+        // Daily puzzles live far outside the campaign level range on purpose —
+        // never let a completed daily push the campaign's saved level forward.
+        if (next.isComplete && !isDaily) saveProgress(currentLevelNum + 1)
     }
 
     fun onHint() {
@@ -127,9 +133,10 @@ class GameViewModel(private val context: Context, startLevel: Int) : ViewModel()
         /** Below this fill ratio a board starts to look empty/disconnected. */
         private const val MIN_HEALTHY_FILL = 0.85f
 
-        fun factory(ctx: Context, level: Int) = object : ViewModelProvider.Factory {
+        fun factory(ctx: Context, level: Int, isDaily: Boolean = false) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(c: Class<T>) = GameViewModel(ctx.applicationContext, level) as T
+            override fun <T : ViewModel> create(c: Class<T>) =
+                GameViewModel(ctx.applicationContext, level, isDaily) as T
         }
 
         /** Read saved progress. */

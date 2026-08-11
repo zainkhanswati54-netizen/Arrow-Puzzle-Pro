@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.motion.Motion
@@ -57,6 +60,10 @@ import java.util.Locale
  *
  * Grid cells animate in on a diagonal stagger rather than row-by-row — it takes
  * the same total time but reads as one gesture instead of seven.
+ *
+ * Exactly one challenge unlocks every 24 hours: completing it stars today's
+ * cell for good, and Play stays disabled until the calendar rolls to a new
+ * day, matching the "one level a day" loop.
  */
 @Composable
 fun DailyScreen(
@@ -65,16 +72,21 @@ fun DailyScreen(
     onPlay: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    today: LocalDate = LocalDate.now(),
-    starsEarned: Int = 0
+    today: LocalDate = LocalDate.now()
 ) {
     val palette = AppTheme.palette
     var showIntro by remember(introSeen) { mutableStateOf(!introSeen) }
+
+    val context = LocalContext.current
+    val dailyVm: DailyViewModel = viewModel(factory = DailyViewModel.factory(context))
+    val dailyState by dailyVm.state.collectAsState()
 
     val month = remember(today) { YearMonth.from(today) }
     val monthLabel = remember(month) {
         month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
     }
+    val starsEarned = remember(dailyState, month) { dailyState.starsIn(month) }
+    val playedToday = dailyState.playedToday
 
     Box(
         modifier = modifier
@@ -122,13 +134,14 @@ fun DailyScreen(
 
                 Spacer(Modifier.height(18.dp))
 
-                MonthGrid(month = month, today = today)
+                MonthGrid(month = month, today = today, completedDays = dailyState.completedDays)
 
                 Spacer(Modifier.weight(1f))
 
                 PrimaryPillButton(
-                    text = "Play",
+                    text = if (playedToday) "Come back tomorrow" else "Play",
                     onClick = onPlay,
+                    enabled = !playedToday,
                     modifier = Modifier
                         .enterFromBelow(delayMillis = Motion.stagger(6))
                         .fillMaxWidth()
@@ -227,6 +240,7 @@ private fun DailyHeader(onBack: () -> Unit, modifier: Modifier = Modifier) {
 private fun MonthGrid(
     month: YearMonth,
     today: LocalDate,
+    completedDays: Set<Long>,
     modifier: Modifier = Modifier
 ) {
     val palette = AppTheme.palette
@@ -271,6 +285,7 @@ private fun MonthGrid(
                                 day = dayOfMonth,
                                 isToday = date == today,
                                 isPast = date.isBefore(today),
+                                isCompleted = date.toEpochDay() in completedDays,
                                 // Diagonal stagger: the wave crosses the grid once.
                                 delayMillis = Motion.stagger(row + column, step = 26, max = 360)
                             )
@@ -287,6 +302,7 @@ private fun DayCell(
     day: Int,
     isToday: Boolean,
     isPast: Boolean,
+    isCompleted: Boolean,
     delayMillis: Int,
     modifier: Modifier = Modifier
 ) {
@@ -312,18 +328,33 @@ private fun DayCell(
             modifier = Modifier
                 .size(38.dp)
                 .clip(CircleShape)
-                .background(if (isToday) Blue500 else Color.Transparent),
+                .background(
+                    when {
+                        isToday -> Blue500
+                        isCompleted -> palette.accentGold.copy(alpha = 0.18f)
+                        else -> Color.Transparent
+                    }
+                ),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = day.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                color = when {
-                    isToday -> Color.White
-                    isPast -> palette.inkSoft
-                    else -> palette.inkMuted.copy(alpha = 0.55f)
-                }
-            )
+            if (isCompleted && !isToday) {
+                Icon(
+                    imageVector = Icons.Rounded.Star,
+                    contentDescription = "Completed",
+                    tint = palette.accentGold,
+                    modifier = Modifier.size(18.dp)
+                )
+            } else {
+                Text(
+                    text = day.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when {
+                        isToday -> Color.White
+                        isPast -> palette.inkSoft
+                        else -> palette.inkMuted.copy(alpha = 0.55f)
+                    }
+                )
+            }
         }
     }
 }

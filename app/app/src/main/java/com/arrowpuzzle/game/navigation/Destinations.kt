@@ -25,6 +25,9 @@ object Routes {
     const val Game = "game/{levelId}"
     fun game(mode: String = GameMode.Campaign, levelId: Int = 1) = "game/$levelId"
 
+    /** Standalone route: today's daily puzzle, resolved from the date, not an argument. */
+    const val DailyGame = "daily_game"
+
     const val Settings = "settings"
     const val Awards = "awards"
     const val Achievements = "achievements"
@@ -32,7 +35,6 @@ object Routes {
     const val About = "about"
     const val PrivacyRights = "privacy_rights"
     const val PrivacyPreferences = "privacy_preferences"
-    const val RemoveAds = "remove_ads"
     const val Tournament = "tournament"
 }
 

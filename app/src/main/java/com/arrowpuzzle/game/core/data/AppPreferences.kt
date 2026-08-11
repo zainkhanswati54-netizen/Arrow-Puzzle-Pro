@@ -31,6 +31,8 @@ data class AppSettings(
     val soundEnabled: Boolean = true,
     val musicEnabled: Boolean = true,
     val hapticsEnabled: Boolean = true,
+    val analyticsEnabled: Boolean = true,
+    val personalizedAdsEnabled: Boolean = true,
     val loaded: Boolean = false
 )
 
@@ -42,6 +44,8 @@ class AppPreferences(private val context: Context) {
         val Sound = booleanPreferencesKey("sound_enabled")
         val Music = booleanPreferencesKey("music_enabled")
         val Haptics = booleanPreferencesKey("haptics_enabled")
+        val Analytics = booleanPreferencesKey("analytics_enabled")
+        val PersonalizedAds = booleanPreferencesKey("personalized_ads_enabled")
     }
 
     val settings: Flow<AppSettings> = context.settingsStore.data.map { prefs ->
@@ -51,6 +55,8 @@ class AppPreferences(private val context: Context) {
             soundEnabled = prefs[Keys.Sound] ?: true,
             musicEnabled = prefs[Keys.Music] ?: true,
             hapticsEnabled = prefs[Keys.Haptics] ?: true,
+            analyticsEnabled = prefs[Keys.Analytics] ?: true,
+            personalizedAdsEnabled = prefs[Keys.PersonalizedAds] ?: true,
             loaded = true
         )
     }
@@ -60,6 +66,8 @@ class AppPreferences(private val context: Context) {
     suspend fun setSoundEnabled(value: Boolean) = put(Keys.Sound, value)
     suspend fun setMusicEnabled(value: Boolean) = put(Keys.Music, value)
     suspend fun setHapticsEnabled(value: Boolean) = put(Keys.Haptics, value)
+    suspend fun setAnalyticsEnabled(value: Boolean) = put(Keys.Analytics, value)
+    suspend fun setPersonalizedAdsEnabled(value: Boolean) = put(Keys.PersonalizedAds, value)
 
     private suspend fun put(key: Preferences.Key<Boolean>, value: Boolean) {
         context.settingsStore.edit { it[key] = value }
@@ -79,6 +87,8 @@ class AppViewModel(private val preferences: AppPreferences) : ViewModel() {
     fun setSound(enabled: Boolean) = viewModelScope.launch { preferences.setSoundEnabled(enabled) }
     fun setMusic(enabled: Boolean) = viewModelScope.launch { preferences.setMusicEnabled(enabled) }
     fun setHaptics(enabled: Boolean) = viewModelScope.launch { preferences.setHapticsEnabled(enabled) }
+    fun setAnalytics(enabled: Boolean) = viewModelScope.launch { preferences.setAnalyticsEnabled(enabled) }
+    fun setPersonalizedAds(enabled: Boolean) = viewModelScope.launch { preferences.setPersonalizedAdsEnabled(enabled) }
 
     companion object {
         fun factory(context: Context): ViewModelProvider.Factory =

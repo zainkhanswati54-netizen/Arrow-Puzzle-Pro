@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
@@ -27,12 +26,10 @@ import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Green500
 import com.arrowpuzzle.game.core.design.Indigo500
 import com.arrowpuzzle.game.core.design.Lime500
-import com.arrowpuzzle.game.core.design.Red500
 import com.arrowpuzzle.game.core.design.Teal500
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.ui.AppTopBar
-import com.arrowpuzzle.game.core.ui.ComingSoonBadge
 import com.arrowpuzzle.game.core.ui.GroupCard
 import com.arrowpuzzle.game.core.ui.SettingsRow
 import com.arrowpuzzle.game.navigation.Routes
@@ -106,7 +103,6 @@ fun MeScreen(
                     icon = Icons.Rounded.SupportAgent,
                     tint = Green500,
                     showDivider = true,
-                    trailing = { ComingSoonBadge() },
                     onClick = { onNavigate(Routes.Help) }
                 )
                 SettingsRow(
@@ -128,19 +124,6 @@ fun MeScreen(
                     icon = Icons.Rounded.PrivacyTip,
                     tint = Teal500,
                     onClick = { onNavigate(Routes.PrivacyPreferences) }
-                )
-            }
-
-            Spacer(Modifier.height(spacing.xs))
-
-            GroupCard(modifier = Modifier.enterFromBelow(delayMillis = Motion.stagger(4))) {
-                SettingsRow(
-                    label = "Remove Ads",
-                    icon = Icons.Rounded.Payments,
-                    tint = Red500,
-                    showChevron = false,
-                    trailing = { ComingSoonBadge() },
-                    onClick = { onNavigate(Routes.RemoveAds) }
                 )
             }
 

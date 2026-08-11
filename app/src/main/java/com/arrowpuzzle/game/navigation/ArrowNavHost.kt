@@ -16,12 +16,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EmojiEvents
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Payments
-import androidx.compose.material.icons.rounded.PrivacyTip
-import androidx.compose.material.icons.rounded.SportsEsports
-import androidx.compose.material.icons.rounded.SupportAgent
-import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,14 +30,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.arrowpuzzle.game.core.data.AppViewModel
 import com.arrowpuzzle.game.core.design.AppTheme
-import com.arrowpuzzle.game.core.design.Amber500
-import com.arrowpuzzle.game.core.design.Blue500
-import com.arrowpuzzle.game.core.design.Green500
-import com.arrowpuzzle.game.core.design.Indigo500
-import com.arrowpuzzle.game.core.design.Lime500
 import com.arrowpuzzle.game.core.design.Orange600
-import com.arrowpuzzle.game.core.design.Red500
-import com.arrowpuzzle.game.core.design.Teal500
 import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.ui.ComingSoonScreen
@@ -53,6 +40,12 @@ import com.arrowpuzzle.game.feature.daily.DailyScreen
 import com.arrowpuzzle.game.feature.game.GameScreen
 import com.arrowpuzzle.game.feature.game.GameViewModel
 import com.arrowpuzzle.game.feature.home.HomeScreen
+import com.arrowpuzzle.game.feature.info.AboutScreen
+import com.arrowpuzzle.game.feature.info.AchievementsScreen
+import com.arrowpuzzle.game.feature.info.AwardsScreen
+import com.arrowpuzzle.game.feature.info.HelpScreen
+import com.arrowpuzzle.game.feature.info.PrivacyPreferencesScreen
+import com.arrowpuzzle.game.feature.info.PrivacyRightsScreen
 import com.arrowpuzzle.game.feature.me.MeScreen
 import com.arrowpuzzle.game.feature.settings.SettingsScreen
 import com.arrowpuzzle.game.feature.splash.SplashScreen
@@ -174,7 +167,7 @@ fun ArrowPuzzleApp(
                 composable(Routes.Home) {
                     HomeScreen(
                         onPlayCampaign = { navController.navigate(Routes.game(levelId = savedLevel)) },
-                        onPlayDaily = { navController.navigate(Routes.game(GameMode.Daily)) },
+                        onPlayDaily = { navController.navigate(Routes.DailyGame) },
                         onOpenTournament = { navController.navigate(Routes.Tournament) }
                     )
                 }
@@ -183,7 +176,7 @@ fun ArrowPuzzleApp(
                     DailyScreen(
                         introSeen = settings.dailyIntroSeen,
                         onIntroDismissed = appViewModel::markDailyIntroSeen,
-                        onPlay = { navController.navigate(Routes.game(GameMode.Daily)) },
+                        onPlay = { navController.navigate(Routes.DailyGame) },
                         onBack = { switchTab(Routes.Home) }
                     )
                 }
@@ -201,6 +194,21 @@ fun ArrowPuzzleApp(
                     )
                 }
 
+                composable(Routes.DailyGame) {
+                    val dailyVm: com.arrowpuzzle.game.feature.daily.DailyViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                        factory = com.arrowpuzzle.game.feature.daily.DailyViewModel.factory(ctx)
+                    )
+                    GameScreen(
+                        levelId = dailyVm.todaysLevelId(),
+                        isDaily = true,
+                        onDailyComplete = {
+                            dailyVm.onChallengeCompleted()
+                            navController.popBackStack()
+                        },
+                        onExit = navController::popBackStack
+                    )
+                }
+
                 composable(Routes.Settings) {
                     SettingsScreen(
                         settings = settings,
@@ -212,78 +220,30 @@ fun ArrowPuzzleApp(
                 }
 
                 composable(Routes.Awards) {
-                    ComingSoonScreen(
-                        title = "Awards",
-                        headline = "Your trophy shelf",
-                        body = "Finish every daily challenge in a month to earn that month's trophy. The shelf fills up here.",
-                        icon = Icons.Rounded.EmojiEvents,
-                        accent = Amber500,
-                        onBack = navController::popBackStack
-                    )
+                    AwardsScreen(onBack = navController::popBackStack)
                 }
 
                 composable(Routes.Achievements) {
-                    ComingSoonScreen(
-                        title = "Achievements",
-                        headline = "Milestones worth chasing",
-                        body = "Perfect clears, no-hint runs, streaks. Each one unlocks a badge you can show off.",
-                        icon = Icons.Rounded.SportsEsports,
-                        accent = Lime500,
-                        onBack = navController::popBackStack
-                    )
+                    AchievementsScreen(onBack = navController::popBackStack)
                 }
 
                 composable(Routes.Help) {
-                    ComingSoonScreen(
-                        title = "Help",
-                        headline = "How the arrows work",
-                        body = "An interactive tutorial and answers to the questions players actually ask.",
-                        icon = Icons.Rounded.SupportAgent,
-                        accent = Green500,
-                        onBack = navController::popBackStack
-                    )
+                    HelpScreen(onBack = navController::popBackStack)
                 }
 
                 composable(Routes.About) {
-                    ComingSoonScreen(
-                        title = "About Game",
-                        headline = "Arrow Puzzle Pro",
-                        body = "Version 1.0.0 — Tap arrows to clear the maze. Credits, licences and release notes land here.",
-                        icon = Icons.Rounded.Info,
-                        accent = Blue500,
-                        onBack = navController::popBackStack
-                    )
+                    AboutScreen(onBack = navController::popBackStack)
                 }
 
                 composable(Routes.PrivacyRights) {
-                    ComingSoonScreen(
-                        title = "Privacy Rights",
-                        headline = "Your data, your call",
-                        body = "Request a copy of your data or delete it entirely. Wired up before the first release.",
-                        icon = Icons.Rounded.VerifiedUser,
-                        accent = Indigo500,
-                        onBack = navController::popBackStack
-                    )
+                    PrivacyRightsScreen(onBack = navController::popBackStack)
                 }
 
                 composable(Routes.PrivacyPreferences) {
-                    ComingSoonScreen(
-                        title = "Privacy Preferences",
-                        headline = "Choose what you share",
-                        body = "Per-purpose consent toggles for analytics and personalised ads.",
-                        icon = Icons.Rounded.PrivacyTip,
-                        accent = Teal500,
-                        onBack = navController::popBackStack
-                    )
-                }
-
-                composable(Routes.RemoveAds) {
-                    ComingSoonScreen(
-                        title = "Remove Ads",
-                        headline = "Play without interruptions",
-                        body = "A one-time purchase that removes every ad. Store integration is next up.",
-                        icon = Icons.Rounded.Payments,
-                        accent = Red500,
+                    PrivacyPreferencesScreen(
+                        settings = settings,
+                        onAnalytics = appViewModel::setAnalytics,
+                        onPersonalizedAds = appViewModel::setPersonalizedAds,
                         onBack = navController::popBackStack
                     )
                 }

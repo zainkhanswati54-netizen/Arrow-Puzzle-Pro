@@ -82,12 +82,14 @@ import com.arrowpuzzle.game.core.ui.PrimaryPillButton
 fun GameScreen(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
-    levelId: Int = 1
+    levelId: Int = 1,
+    isDaily: Boolean = false,
+    onDailyComplete: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val vm: GameViewModel = viewModel(
         key = "game_$levelId",
-        factory = GameViewModel.factory(context, levelId)
+        factory = GameViewModel.factory(context, levelId, isDaily)
     )
     val ui by vm.state.collectAsState()
     val puzzle = ui.puzzle
@@ -104,7 +106,7 @@ fun GameScreen(
         } else {
             Column(Modifier.fillMaxSize()) {
                 AppTopBar(
-                    title = "Level ${puzzle.level.id}",
+                    title = if (isDaily) "Daily Challenge" else "Level ${puzzle.level.id}",
                     onBack = onExit,
                     trailing = { LivesRow(puzzle.lives) }
                 )
@@ -155,7 +157,15 @@ fun GameScreen(
         // Tutorial
         if (puzzle?.level?.isTutorial == true && ui.tutorialStep == 0) TutOverlay { vm.dismissTutorial() }
         // Win
-        if (ui.showWinCelebration && puzzle != null) WinDlg(puzzle.level.id, puzzle.moveCount, { vm.nextLevel() }, onExit)
+        if (ui.showWinCelebration && puzzle != null) {
+            WinDlg(
+                moves = puzzle.moveCount,
+                isDaily = isDaily,
+                onNext = { vm.nextLevel() },
+                onClaim = { onDailyComplete() },
+                onExit = onExit
+            )
+        }
         // Game over
         if (ui.showGameOver) GameOverDlg({ vm.retry() }, onExit)
     }
@@ -270,23 +280,43 @@ private fun TutOverlay(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun WinDlg(levelId: Int, moves: Int, onNext: () -> Unit, onExit: () -> Unit) {
+private fun WinDlg(
+    moves: Int,
+    isDaily: Boolean,
+    onNext: () -> Unit,
+    onClaim: () -> Unit,
+    onExit: () -> Unit
+) {
     androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
             AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()), exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.95f)) {
                 Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
                     Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("🎉", style = MaterialTheme.typography.displayLarge, modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
+                        Text(if (isDaily) "⭐" else "🎉", style = MaterialTheme.typography.displayLarge, modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
                         Spacer(Modifier.height(16.dp))
-                        Text("Level Complete!", style = MaterialTheme.typography.headlineMedium, color = AppTheme.palette.ink)
+                        Text(
+                            if (isDaily) "Daily Star Earned!" else "Level Complete!",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = AppTheme.palette.ink
+                        )
                         Spacer(Modifier.height(8.dp))
-                        Text("Cleared in $moves moves", style = MaterialTheme.typography.bodyLarge, color = AppTheme.palette.inkMuted)
+                        Text(
+                            if (isDaily) "Cleared in $moves moves — come back in 24 hours for the next one."
+                            else "Cleared in $moves moves",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = AppTheme.palette.inkMuted,
+                            textAlign = TextAlign.Center
+                        )
                         Spacer(Modifier.height(28.dp))
-                        PrimaryPillButton("Next Level", onNext, Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(12.dp))
-                        Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,
-                            modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
+                        if (isDaily) {
+                            PrimaryPillButton("Claim Star", onClaim, Modifier.fillMaxWidth())
+                        } else {
+                            PrimaryPillButton("Next Level", onNext, Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(12.dp))
+                            Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,
+                                modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
+                        }
                     }
                 }
             }
