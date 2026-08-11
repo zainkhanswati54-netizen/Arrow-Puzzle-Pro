@@ -2,12 +2,14 @@ package com.arrowpuzzle.game.feature.game
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,43 +44,57 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
+import com.arrowpuzzle.game.core.design.Blue600
+import com.arrowpuzzle.game.core.design.BlueDeep
 import com.arrowpuzzle.game.core.design.Ink
 import com.arrowpuzzle.game.core.design.Red500
-import com.arrowpuzzle.game.core.game.ArrowPiece
 import com.arrowpuzzle.game.core.game.CellKey
-import com.arrowpuzzle.game.core.game.PuzzleEngine
+import com.arrowpuzzle.game.core.game.Direction
+import com.arrowpuzzle.game.core.game.Level
 import com.arrowpuzzle.game.core.game.PuzzleState
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
 import com.arrowpuzzle.game.core.motion.pulse
 import com.arrowpuzzle.game.core.ui.AppTopBar
+import com.arrowpuzzle.game.core.ui.ConfettiOverlay
 import com.arrowpuzzle.game.core.ui.PrimaryPillButton
+import com.arrowpuzzle.game.core.ui.SunburstBackground
+import com.arrowpuzzle.game.core.ui.drawPipeNetwork
+import com.arrowpuzzle.game.core.ui.drawStandaloneArrow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun GameScreen(
@@ -97,12 +114,27 @@ fun GameScreen(
     val palette = AppTheme.palette
     val haptics = LocalHapticFeedback.current
 
-    Box(modifier.fillMaxSize().background(palette.canvas)) {
-        // The animated arrow backdrop is decorative only — it was competing with
-        // the puzzle board's own touch/redraw work every frame and was the main
-        // source of jank on mid/low-end GPUs (reported on MediaTek G96 devices).
-        // Gameplay now renders on a plain background.
+    // Sequences the win flow the way the reference does: board clears → a
+    // short "Impressive!" beat while the board sits empty → then the
+    // fullscreen celebration. Keyed on the level id so it resets cleanly
+    // when nextLevel()/retry() swap in a fresh GameUiState.
+    var showImpressive by remember(puzzle?.level?.id, isDaily) { mutableStateOf(false) }
+    var revealWin by remember(puzzle?.level?.id, isDaily) { mutableStateOf(false) }
 
+    LaunchedEffect(ui.showWinCelebration, puzzle?.level?.id) {
+        if (ui.showWinCelebration) {
+            showImpressive = true
+            delay(650)
+            showImpressive = false
+            delay(140)
+            revealWin = true
+        } else {
+            showImpressive = false
+            revealWin = false
+        }
+    }
+
+    Box(modifier.fillMaxSize().background(palette.canvas)) {
         if (ui.loading || puzzle == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Blue500)
@@ -112,21 +144,34 @@ fun GameScreen(
                 AppTopBar(
                     title = if (isDaily) "Daily Challenge" else "Level ${puzzle.level.id}",
                     onBack = onExit,
-                    trailing = { LivesRow(puzzle.lives) }
+                    trailing = {
+                        val src = remember { MutableInteractionSource() }
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .pressScale(src, 0.88f)
+                                .clip(CircleShape)
+                                .clickable(src, null, role = Role.Button) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    SoundEngine.playButton()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Settings, "Settings", tint = palette.inkMuted, modifier = Modifier.size(22.dp))
+                        }
+                    }
                 )
 
-                // Piece count + difficulty
+                // Row 2: remaining-arrows chip · hearts · difficulty chip — mirrors
+                // the reference's two-row HUD instead of cramming everything into one.
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 2.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🏁", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.width(6.dp))
-                        Text("${puzzle.remaining.size}", style = MaterialTheme.typography.titleMedium, color = palette.ink)
-                    }
-                    Text(puzzle.level.difficulty.name, style = MaterialTheme.typography.labelMedium, color = palette.inkMuted)
+                    StatChip(text = "${puzzle.remaining.size}", leading = { Text("\uD83C\uDFC1", style = MaterialTheme.typography.labelMedium) })
+                    LivesRow(puzzle.lives)
+                    StatChip(text = puzzle.level.difficulty.name)
                 }
 
                 Spacer(Modifier.weight(0.05f))
@@ -134,17 +179,17 @@ fun GameScreen(
                 // ── MAZE ──
                 MazeBoard(
                     puzzle = puzzle,
-                    hintPieceId = ui.hintPieceId,
+                    hintCell = ui.hintCell,
                     onCellTap = { r, c -> haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onCellTap(r, c) },
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)
                 )
 
                 Spacer(Modifier.weight(0.05f))
 
-                // Buttons
+                // Buttons — small circular icon actions, matching the reference.
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)
                 ) {
                     ToolBtn(Icons.Rounded.Lightbulb, "Hint", puzzle.hintsRemaining) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onHint()
@@ -160,9 +205,15 @@ fun GameScreen(
 
         // Tutorial
         if (puzzle?.level?.isTutorial == true && ui.tutorialStep == 0) TutOverlay { vm.dismissTutorial() }
+
+        // Mid-level praise beat, shown while the board sits empty just before
+        // the fullscreen celebration.
+        if (showImpressive) ImpressiveToast()
+
         // Win
-        if (ui.showWinCelebration && puzzle != null) {
+        if (revealWin && puzzle != null) {
             WinDlg(
+                level = puzzle.level,
                 moves = puzzle.moveCount,
                 isDaily = isDaily,
                 onNext = { vm.nextLevel() },
@@ -177,16 +228,45 @@ fun GameScreen(
 
 // ── MAZE BOARD ───────────────────────────────────────────────────────────────
 
-/** Faint dots across every grid cell, occupied or not — the "grid guide" competitor
- *  boards use so the board reads as a structured lattice, not loose floating pieces. */
-private val GridGuideDot = Color(0xFFD3DCE8)
+private class ExitAnim(val direction: Direction, val progress: Animatable<Float, AnimationVector1D>)
 
 @Composable
-private fun MazeBoard(puzzle: PuzzleState, hintPieceId: Int?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
+private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
     val level = puzzle.level
-    val palette = AppTheme.palette
-    val allCells = remember(level) { level.pieces.flatMap { it.cells }.toSet() }
-    val adjPairs = remember(level) { PuzzleEngine.adjacencyPairs(level) }
+    val ghostCells = remember(level) { level.arrows.associate { CellKey(it.row, it.col) to it.direction } }
+    val scope = rememberCoroutineScope()
+
+    // Flying-off tap-clear animation state, keyed per level so it resets on
+    // retry/next level. One entry per cell currently mid-exit.
+    val exitAnims = remember(level) { mutableStateMapOf<CellKey, ExitAnim>() }
+    var lastClearedCount by remember(level) { mutableStateOf(puzzle.cleared.size) }
+
+    LaunchedEffect(puzzle.cleared.size) {
+        if (puzzle.cleared.size > lastClearedCount) {
+            val newCell = puzzle.cleared.last()
+            val dir = ghostCells[newCell]
+            if (dir != null && newCell !in exitAnims) {
+                val anim = Animatable(0f)
+                exitAnims[newCell] = ExitAnim(dir, anim)
+                scope.launch {
+                    anim.animateTo(1f, tween(420, easing = Motion.Exit))
+                    exitAnims.remove(newCell)
+                }
+            }
+        }
+        lastClearedCount = puzzle.cleared.size
+    }
+
+    // Brief red flash on a blocked tap — the rule engine already tracked
+    // lastError, it just wasn't surfaced visually before.
+    var shakeCell by remember(level) { mutableStateOf<CellKey?>(null) }
+    LaunchedEffect(puzzle.lastError) {
+        if (puzzle.lastError != null) {
+            shakeCell = puzzle.lastError
+            delay(300)
+            if (shakeCell == puzzle.lastError) shakeCell = null
+        }
+    }
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val cellW = maxWidth / level.gridCols
@@ -194,125 +274,82 @@ private fun MazeBoard(puzzle: PuzzleState, hintPieceId: Int?, onCellTap: (Int, I
         val cellSize = min(cellW, cellH).coerceAtMost(64.dp)
         val bw = cellSize * level.gridCols
         val bh = cellSize * level.gridRows
-        val lineW = cellSize * 0.45f
 
-        // Card backdrop behind the whole board — contains the grid instead of
-        // letting it float loose on the canvas background.
-        Box(
-            Modifier
-                .width(bw + 20.dp)
-                .height(bh + 20.dp)
-                .shadow(6.dp, RoundedCornerShape(22.dp))
-                .clip(RoundedCornerShape(22.dp))
-                .background(palette.surface)
-        ) {
-            Box(Modifier.width(bw).height(bh).align(Alignment.Center)) {
-                // Draw maze structure: full dotted grid guide, then the connected
-                // "pipe" lines/nodes between adjacent occupied cells on top.
-                Box(Modifier.fillMaxSize().drawWithCache {
-                    val cs = cellSize.toPx()
-                    val lw = lineW.toPx()
-                    val dotR = cs * 0.045f
-                    onDrawBehind {
-                        // Grid guide — every cell in the board, empty or not.
-                        for (r in 0 until level.gridRows) for (c in 0 until level.gridCols) {
-                            val cx = c * cs + cs / 2; val cy = r * cs + cs / 2
-                            drawCircle(GridGuideDot, dotR, Offset(cx, cy))
-                        }
-                        // Connecting lines between occupied neighbours.
-                        for ((a, b) in adjPairs) {
-                            val ax = a.col * cs + cs / 2; val ay = a.row * cs + cs / 2
-                            val bx = b.col * cs + cs / 2; val by = b.row * cs + cs / 2
-                            val aR = a in allCells && a in puzzle.occupied; val bR = b in puzzle.occupied
-                            val col = when { aR && bR -> Ink; aR || bR -> Ink.copy(0.3f); else -> Blue500.copy(0.15f) }
-                            drawLine(col, Offset(ax, ay), Offset(bx, by), lw, StrokeCap.Round)
-                        }
-                        // Cell nodes for occupied cells.
-                        for (c in allCells) {
-                            val cx = c.col * cs + cs / 2; val cy = c.row * cs + cs / 2
-                            val inR = c in puzzle.occupied
-                            drawCircle(if (inR) Ink else Blue500.copy(0.12f), lw / 2, Offset(cx, cy))
-                        }
-                    }
-                })
+        Box(Modifier.width(bw).height(bh)) {
+            // Ghost layer — the full original board at low opacity. Once most
+            // arrows are cleared this is what keeps the board from looking
+            // broken/blank: the maze silhouette stays on screen throughout.
+            Canvas(Modifier.fillMaxSize()) {
+                drawPipeNetwork(ghostCells, cellSize.toPx(), Ink.copy(alpha = 0.10f))
+            }
 
-                // One tile per remaining piece — a multi-cell "snake" renders as a
-                // single connected pipe with the arrowhead at its exit end, tappable
-                // anywhere along its body.
-                puzzle.remaining.values.forEach { piece ->
-                    key(piece.id) {
-                        val minRow = piece.cells.minOf { it.row }
-                        val minCol = piece.cells.minOf { it.col }
-                        val spanRows = piece.cells.maxOf { it.row } - minRow + 1
-                        val spanCols = piece.cells.maxOf { it.col } - minCol + 1
-                        PieceTile(
-                            piece = piece,
-                            isHint = piece.id == hintPieceId,
-                            isError = piece.id == puzzle.lastErrorId,
-                            moveCount = puzzle.moveCount,
-                            cellSize = cellSize,
-                            minRow = minRow,
-                            minCol = minCol,
-                            onTap = { onCellTap(piece.head.row, piece.head.col) },
-                            modifier = Modifier
-                                .offset(cellSize * minCol, cellSize * minRow)
-                                .size(cellSize * spanCols, cellSize * spanRows)
-                        )
+            // Hint glow, drawn under the active pipe so the pipe reads on top.
+            hintCell?.let { hc ->
+                Box(
+                    Modifier
+                        .offset(cellSize * hc.col, cellSize * hc.row)
+                        .size(cellSize)
+                        .pulse(min = 0.85f, max = 1.05f, periodMillis = 900)
+                        .background(Blue500.copy(alpha = 0.28f), CircleShape)
+                )
+            }
+            // Blocked-tap flash.
+            shakeCell?.let { sc ->
+                Box(
+                    Modifier
+                        .offset(cellSize * sc.col, cellSize * sc.row)
+                        .size(cellSize)
+                        .background(Red500.copy(alpha = 0.30f), CircleShape)
+                )
+            }
+
+            // Active layer — only arrows still in play, full ink, redrawn
+            // whenever the remaining set changes (i.e. once per tap).
+            Canvas(Modifier.fillMaxSize()) {
+                drawPipeNetwork(puzzle.remaining, cellSize.toPx(), Ink)
+            }
+
+            // Flying-off arrows: tapped cells animate off-board in their
+            // pointing direction with a stretch trail and a colour shift to
+            // blue, instead of just disappearing in place.
+            exitAnims.forEach { (cell, exit) ->
+                key(cell) {
+                    Box(
+                        Modifier
+                            .offset(cellSize * cell.col, cellSize * cell.row)
+                            .size(cellSize)
+                            .graphicsLayer {
+                                val p = exit.progress.value
+                                val cellPx = cellSize.toPx()
+                                val dist = cellPx * (level.gridCols + level.gridRows) * 0.65f
+                                translationX = exit.direction.dx * p * dist
+                                translationY = exit.direction.dy * p * dist
+                                val stretch = 1f + p * 1.4f
+                                if (exit.direction.dx != 0) scaleX = stretch else scaleY = stretch
+                                alpha = (1f - ((p - 0.5f).coerceAtLeast(0f) / 0.5f)).coerceIn(0f, 1f)
+                            }
+                    ) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val col = lerp(Ink, Blue500, (exit.progress.value / 0.3f).coerceIn(0f, 1f))
+                            drawStandaloneArrow(exit.direction, size.minDimension, col)
+                        }
                     }
                 }
             }
+
+            // Invisible tap targets — one per remaining cell.
+            puzzle.remaining.keys.forEach { cell ->
+                key(cell) {
+                    val src = remember { MutableInteractionSource() }
+                    Box(
+                        Modifier
+                            .offset(cellSize * cell.col, cellSize * cell.row)
+                            .size(cellSize)
+                            .clickable(src, null, role = Role.Button) { onCellTap(cell.row, cell.col) }
+                    )
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun PieceTile(
-    piece: ArrowPiece,
-    isHint: Boolean,
-    isError: Boolean,
-    moveCount: Int,
-    cellSize: Dp,
-    minRow: Int,
-    minCol: Int,
-    onTap: () -> Unit,
-    modifier: Modifier
-) {
-    val src = remember { MutableInteractionSource() }
-    val flash = remember { Animatable(0f) }
-    LaunchedEffect(isError, moveCount) {
-        if (isError) { flash.snapTo(1f); flash.animateTo(0f, tween(380)) }
-    }
-
-    Box(modifier.clickable(src, null, role = Role.Button, onClick = onTap).pressScale(src, 0.92f)) {
-        val baseColor = if (isHint) Blue500 else Color.White
-        val head = piece.head
-        val tail = piece.cells.last()
-        Box(Modifier.fillMaxSize().drawWithCache {
-            val cs = cellSize.toPx()
-            val sw = cs * 0.19f
-            val hs = cs * 0.26f
-            val dir = piece.direction
-
-            val headPt = Offset((head.col - minCol + 0.5f) * cs, (head.row - minRow + 0.5f) * cs)
-            val tailPt = Offset((tail.col - minCol + 0.5f) * cs, (tail.row - minRow + 0.5f) * cs)
-            // Pull the shaft's end back from the head so the arrowhead has room.
-            val shaftEnd = Offset(headPt.x - dir.dx * hs * 0.55f, headPt.y - dir.dy * hs * 0.55f)
-            val shaft = Path().apply { moveTo(tailPt.x, tailPt.y); lineTo(shaftEnd.x, shaftEnd.y) }
-
-            val perpX = -dir.dy.toFloat(); val perpY = dir.dx.toFloat()
-            val headBack = Offset(headPt.x - dir.dx * hs, headPt.y - dir.dy * hs)
-            val headArrow = Path().apply {
-                moveTo(headBack.x + perpX * hs, headBack.y + perpY * hs)
-                lineTo(headPt.x, headPt.y)
-                lineTo(headBack.x - perpX * hs, headBack.y - perpY * hs)
-            }
-            val stroke = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            onDrawBehind {
-                val color = lerp(baseColor, Red500, flash.value)
-                drawPath(shaft, color, style = stroke)
-                drawPath(headArrow, color, style = stroke)
-            }
-        })
     }
 }
 
@@ -323,20 +360,47 @@ private fun LivesRow(lives: Int) = Row(horizontalArrangement = Arrangement.space
     repeat(3) { Icon(Icons.Rounded.Favorite, null, tint = if (it < lives) Red500 else Red500.copy(0.22f), modifier = Modifier.size(18.dp)) }
 }
 
+/** Small pill chip used for the remaining-arrows count and the difficulty label. */
 @Composable
-private fun ToolBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, badge: Int? = null, onClick: () -> Unit) {
-    val pal = AppTheme.palette; val src = remember { MutableInteractionSource() }
-    Column(Modifier.pressScale(src, 0.94f).shadow(8.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
-        .background(pal.surface).clickable(src, null, role = Role.Button, onClick = onClick)
-        .padding(horizontal = 24.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box {
-            Icon(icon, null, tint = Blue500, modifier = Modifier.size(24.dp))
-            if (badge != null && badge > 0) Box(Modifier.align(Alignment.TopEnd).offset(8.dp, (-4).dp).size(16.dp).clip(CircleShape).background(Blue500), Alignment.Center) {
-                Text("$badge", style = MaterialTheme.typography.labelSmall, color = Color.White)
+private fun StatChip(text: String, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null) {
+    val pal = AppTheme.palette
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(pal.canvasSunken)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        leading?.invoke()
+        Text(text, style = MaterialTheme.typography.labelMedium, color = pal.inkSoft)
+    }
+}
+
+/** Small circular icon action button — Hint / Retry, matching the reference's compact tool row. */
+@Composable
+private fun ToolBtn(icon: ImageVector, label: String, badge: Int? = null, onClick: () -> Unit) {
+    val pal = AppTheme.palette
+    val src = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .size(56.dp)
+            .pressScale(src, 0.9f)
+            .shadow(8.dp, CircleShape)
+            .clip(CircleShape)
+            .background(pal.surface)
+            .clickable(src, null, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, label, tint = Blue500, modifier = Modifier.size(24.dp))
+        if (badge != null && badge > 0) {
+            Box(
+                Modifier.align(Alignment.TopEnd).offset((-2).dp, 2.dp).size(18.dp).clip(CircleShape).background(Blue500),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("$badge", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = Color.White)
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = pal.inkSoft)
     }
 }
 
@@ -356,46 +420,130 @@ private fun TutOverlay(onDismiss: () -> Unit) {
     }
 }
 
+/** Short praise beat shown while the board sits empty, right before the
+ *  fullscreen celebration — mirrors the reference's "Impressive!" card. */
+@Composable
+private fun ImpressiveToast() {
+    val phrases = remember { listOf("Impressive!", "Nicely done!", "Smooth clear!") }
+    val phrase = remember { phrases.random() }
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
+        val s = remember { MutableTransitionState(false) }; s.targetState = true
+        AnimatedVisibility(
+            s,
+            enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.7f, animationSpec = Motion.playful()),
+            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.85f)
+        ) {
+            Surface(shape = RoundedCornerShape(20.dp), color = AppTheme.palette.surface, shadowElevation = 10.dp) {
+                Column(Modifier.padding(24.dp, 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("\uD83D\uDE32", style = MaterialTheme.typography.displaySmall)
+                    Spacer(Modifier.height(6.dp))
+                    Text(phrase, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = Blue500)
+                }
+            }
+        }
+    }
+}
+
+/** Small solved-board preview shown on the win card — draws the level's full
+ *  original pipe network at a fixed thumbnail scale. */
+@Composable
+private fun LevelThumbnail(level: Level, sizeDp: Dp) {
+    val cells = remember(level) { level.arrows.associate { CellKey(it.row, it.col) to it.direction } }
+    val cellPx = with(LocalDensity.current) { sizeDp.toPx() / maxOf(level.gridRows, level.gridCols) }
+    Canvas(Modifier.size(sizeDp)) {
+        drawPipeNetwork(cells, cellPx, Ink, pipeWidthFraction = 0.26f)
+    }
+}
+
 @Composable
 private fun WinDlg(
+    level: Level,
     moves: Int,
     isDaily: Boolean,
     onNext: () -> Unit,
     onClaim: () -> Unit,
     onExit: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
+    Dialog(onExit, DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(Blue500, Blue600, BlueDeep)))
+        ) {
+            SunburstBackground(Modifier.fillMaxSize())
+            ConfettiOverlay(Modifier.fillMaxSize())
+
             val s = remember { MutableTransitionState(false) }; s.targetState = true
-            AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.85f, animationSpec = Motion.playful()), exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.95f)) {
-                Surface(shape = RoundedCornerShape(26.dp), color = AppTheme.palette.surface, shadowElevation = 24.dp) {
-                    Column(Modifier.padding(24.dp, 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(if (isDaily) "⭐" else "🎉", style = MaterialTheme.typography.displayLarge, modifier = Modifier.pulse(min = 0.92f, max = 1.1f, periodMillis = 1800))
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            if (isDaily) "Daily Star Earned!" else "Level Complete!",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = AppTheme.palette.ink
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            if (isDaily) "Cleared in $moves moves — come back in 24 hours for the next one."
-                            else "Cleared in $moves moves",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = AppTheme.palette.inkMuted,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(28.dp))
-                        if (isDaily) {
-                            PrimaryPillButton("Claim Star", onClaim, Modifier.fillMaxWidth())
-                        } else {
-                            PrimaryPillButton("Next Level", onNext, Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(12.dp))
-                            Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,
-                                modifier = Modifier.clip(CircleShape).clickable { onExit() }.padding(16.dp, 8.dp))
+            Column(
+                Modifier.fillMaxSize().padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    if (isDaily) "Daily Star Earned!" else "Level Completed!",
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 28.sp),
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+                AnimatedVisibility(
+                    s,
+                    enter = fadeIn(tween(320)) + scaleIn(initialScale = 0.7f, animationSpec = Motion.playful())
+                ) {
+                    Surface(shape = RoundedCornerShape(26.dp), color = Color.White, shadowElevation = 18.dp) {
+                        Box(Modifier.padding(28.dp), Alignment.Center) {
+                            LevelThumbnail(level, 128.dp)
                         }
                     }
                 }
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    if (moves == 1) "Cleared in 1 move" else "Cleared in $moves moves",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+                Spacer(Modifier.height(36.dp))
+                if (isDaily) {
+                    WhitePillButton("Claim Star", onClaim, Modifier.fillMaxWidth())
+                } else {
+                    WhitePillButton("Next Game", onNext, Modifier.fillMaxWidth(), subtitle = "Level ${level.id + 1}")
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Main",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.clip(CircleShape).clickable {
+                        SoundEngine.playButton(); onExit()
+                    }.padding(16.dp, 8.dp)
+                )
+            }
+        }
+    }
+}
+
+/** White pill with blue text — the win screen's primary action sits on a
+ *  blue background, so it inverts the usual blue-pill/white-text button. */
+@Composable
+private fun WhitePillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null) {
+    val src = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
+    Box(
+        modifier
+            .pressScale(src, 0.965f)
+            .shadow(10.dp, CircleShape)
+            .clip(CircleShape)
+            .background(Color.White)
+            .clickable(src, null, role = Role.Button) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress); onClick()
+            }
+            .padding(horizontal = 28.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Blue600)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Blue600.copy(alpha = 0.7f))
             }
         }
     }
@@ -403,7 +551,7 @@ private fun WinDlg(
 
 @Composable
 private fun GameOverDlg(onRetry: () -> Unit, onExit: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onExit, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onExit, DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
             AnimatedVisibility(s, enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.85f, animationSpec = Motion.bouncy()), exit = fadeOut(tween(200))) {

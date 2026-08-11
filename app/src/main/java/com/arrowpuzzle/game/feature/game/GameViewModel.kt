@@ -28,8 +28,8 @@ private val KEY_LEVEL = intPreferencesKey("current_level")
 @Immutable
 data class GameUiState(
     val puzzle: PuzzleState? = null,
-    val escapable: Set<Int> = emptySet(),
-    val hintPieceId: Int? = null,
+    val escapable: Set<CellKey> = emptySet(),
+    val hintCell: CellKey? = null,
     val showWinCelebration: Boolean = false,
     val showGameOver: Boolean = false,
     val tutorialStep: Int = 1, // 0=show overlay, 1=playing
@@ -55,22 +55,21 @@ class GameViewModel(
             val puzzle = PuzzleEngine.create(level)
             _state.value = GameUiState(
                 puzzle = puzzle,
-                escapable = PuzzleEngine.escapableIds(puzzle),
+                escapable = PuzzleEngine.escapableArrows(puzzle),
                 tutorialStep = if (level.isTutorial) 0 else 1,
                 loading = false
             )
         }
     }
 
-    /** Taps whatever piece occupies (row, col) — every cell along a multi-cell
-     *  piece's body resolves to the same piece, so the whole "snake" is tappable. */
     fun onCellTap(row: Int, col: Int) {
         val cur = _state.value.puzzle ?: return
         if (cur.isComplete || cur.isGameOver) return
-        val id = PuzzleEngine.pieceAt(cur, CellKey(row, col)) ?: return
+        val cell = CellKey(row, col)
+        if (cell !in cur.remaining) return
 
-        val canEsc = PuzzleEngine.canEscape(cur, id)
-        val next = PuzzleEngine.tap(cur, id)
+        val canEsc = PuzzleEngine.canEscape(cur, cell)
+        val next = PuzzleEngine.tap(cur, cell)
 
         when {
             next.isComplete -> SoundEngine.playComplete()
@@ -79,8 +78,8 @@ class GameViewModel(
         }
 
         _state.value = _state.value.copy(
-            puzzle = next, escapable = PuzzleEngine.escapableIds(next),
-            hintPieceId = null, showWinCelebration = next.isComplete,
+            puzzle = next, escapable = PuzzleEngine.escapableArrows(next),
+            hintCell = null, showWinCelebration = next.isComplete,
             showGameOver = next.isGameOver,
             tutorialStep = if (_state.value.tutorialStep == 0) 1 else _state.value.tutorialStep
         )
@@ -91,7 +90,7 @@ class GameViewModel(
         val cur = _state.value.puzzle ?: return
         if (cur.hintsRemaining <= 0) { SoundEngine.playError(); return }
         val h = PuzzleEngine.findHint(cur)
-        if (h != null) { SoundEngine.playHint(); _state.value = _state.value.copy(hintPieceId = h) }
+        if (h != null) { SoundEngine.playHint(); _state.value = _state.value.copy(hintCell = h) }
         else SoundEngine.playError()
     }
 
