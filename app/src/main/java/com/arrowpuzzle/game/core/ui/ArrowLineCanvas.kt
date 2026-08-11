@@ -10,16 +10,16 @@ import com.arrowpuzzle.game.core.game.CellKey
 import com.arrowpuzzle.game.core.game.Direction
 
 /**
- * Slim, sharp-cornered "line art" arrow renderer — replaces the thick rounded
- * pipe look with the clean, minimal single-stroke style the team standardised
- * on: a thin shaft, a crisp 90-degree miter at every turn (no rounding, no
- * overlap notches at the joints) and a solid filled triangular head.
+ * Slim "line art" arrow renderer — a thin shaft with a small **rounded**
+ * fillet at every turn (matches the competitor reference's corner treatment:
+ * not a big pipe-radius bulge, just enough rounding that turns don't look
+ * knife-sharp) and a solid filled triangular head.
  *
- * Each cell's arm-run is built as ONE continuous [Path] (moveTo → lineTo →
- * lineTo …) rather than several overlapping segments — that is what keeps
- * corners perfectly sharp instead of showing the little square "spike"
- * artifact you get when two butt-capped segments are drawn separately and
- * happen to overlap at a joint.
+ * Each cell's arm-run is still built as ONE continuous [Path] (moveTo →
+ * lineTo → lineTo …) — that's what keeps the joint clean instead of showing
+ * the little square "spike" artifact you get when two butt-capped segments
+ * are drawn separately and happen to overlap at a joint. Only the join type
+ * changed (Miter → Round); the path construction is untouched.
  */
 fun DrawScope.drawArrowLineNetwork(
     cells: Map<CellKey, Direction>,
@@ -27,16 +27,18 @@ fun DrawScope.drawArrowLineNetwork(
     color: Color,
     originX: Float = 0f,
     originY: Float = 0f,
-    lineWidthFraction: Float = 0.085f
+    lineWidthFraction: Float = 0.11f,
+    highlight: Map<CellKey, Color> = emptyMap()
 ) {
     if (cells.isEmpty()) return
     val lineWidth = cellPx * lineWidthFraction
-    val stroke = Stroke(lineWidth, cap = StrokeCap.Butt, join = StrokeJoin.Miter, miter = 4f)
+    val stroke = Stroke(lineWidth, cap = StrokeCap.Butt, join = StrokeJoin.Round)
     val armLen = cellPx * 0.5f
     val headLen = cellPx * 0.22f
-    val headHalfWidth = cellPx * 0.155f
+    val headHalfWidth = cellPx * 0.165f
 
     for ((cell, dir) in cells) {
+        val cellColor = highlight[cell] ?: color
         val cx = originX + cell.col * cellPx + cellPx / 2f
         val cy = originY + cell.row * cellPx + cellPx / 2f
         val arms = armsFor(cell, dir, cells)
@@ -73,8 +75,8 @@ fun DrawScope.drawArrowLineNetwork(
                 }
             }
         }
-        drawPath(path, color, style = stroke)
-        drawArrowHead(tipX, tipY, headBackX, headBackY, dir, headHalfWidth, color)
+        drawPath(path, cellColor, style = stroke)
+        drawArrowHead(tipX, tipY, headBackX, headBackY, dir, headHalfWidth, cellColor)
     }
 }
 
@@ -101,10 +103,10 @@ private fun DrawScope.drawArrowHead(
 fun DrawScope.drawStandaloneArrowLine(dir: Direction, sizePx: Float, color: Color) {
     val cx = size.width / 2f; val cy = size.height / 2f
     val armLen = sizePx * 0.42f
-    val lineWidth = sizePx * 0.075f
+    val lineWidth = sizePx * 0.10f
     val headLen = sizePx * 0.20f
-    val headHalfWidth = sizePx * 0.135f
-    val stroke = Stroke(lineWidth, cap = StrokeCap.Butt, join = StrokeJoin.Miter, miter = 4f)
+    val headHalfWidth = sizePx * 0.145f
+    val stroke = Stroke(lineWidth, cap = StrokeCap.Butt, join = StrokeJoin.Round)
 
     val tailX = cx - dir.dx * armLen; val tailY = cy - dir.dy * armLen
     val tipX = cx + dir.dx * armLen; val tipY = cy + dir.dy * armLen

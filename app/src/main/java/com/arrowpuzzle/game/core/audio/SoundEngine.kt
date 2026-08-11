@@ -25,7 +25,8 @@ import kotlin.random.Random
  *    successfully slides off the board, timed to the slide animation
  *  - **correct**: a bright ascending two-note ping (C5→E5)
  *  - **complete**: a satisfying three-note arpeggio (C5→E5→G5)
- *  - **error**: a short low, rounded buzz
+ *  - **error**: a double-pulse low buzzer for a blocked tap — harsher and
+ *    more "wrong answer" than a single soft tick
  *  - **button**: a soft, quiet UI tap
  *  - **hint**: a gentle descending note (E5→C5)
  */
@@ -47,7 +48,7 @@ object SoundEngine {
     fun playMove() = play("move") { generateWhoosh(340f, 900f, 0.22f) }
     fun playCorrect() = play("correct") { generatePing(523f, 659f, 0.12f) }
     fun playComplete() = play("complete") { generateArpeggio(listOf(523f, 659f, 784f), 0.10f) }
-    fun playError() = play("error") { generateTick(220f, 0.09f, decay = 7f) }
+    fun playError() = play("error") { generateBuzz(196f, 0.16f) }
     fun playButton() = play("button") { generateTick(660f, 0.035f, volume = 0.22f) }
     fun playHint() = play("hint") { generatePing(659f, 523f, 0.10f) }
 
@@ -161,6 +162,27 @@ object SoundEngine {
             val envelope = attackEnvelope(t, attack) * exp(-6f * t) * volume
             val sample = warmTone(freq, t) * envelope
             out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return out
+    }
+
+    /** Two short low pulses with a detuned second oscillator — a harsher,
+     *  more "wrong answer" buzzer than a single rounded tick, matching the
+     *  punchier blocked-tap feedback in the competitor reference. */
+    private fun generateBuzz(freq: Float, durationSec: Float, volume: Float = 0.30f): ShortArray {
+        val gap = (SAMPLE_RATE * 0.03f).toInt()
+        val pulseLen = ((SAMPLE_RATE * durationSec).toInt() - gap) / 2
+        val out = ShortArray(pulseLen * 2 + gap)
+        for (p in 0 until 2) {
+            val base = p * (pulseLen + gap)
+            for (i in 0 until pulseLen) {
+                val t = i.toFloat() / SAMPLE_RATE
+                val envelope = attackEnvelope(t, 0.004f) * exp(-9f * t) * volume
+                val detune = sin(2.0 * PI * (freq * 1.5) * t).toFloat() * 0.35f
+                val sample = (warmTone(freq, t) + detune) * envelope
+                out[base + i] = (sample * Short.MAX_VALUE).toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            }
         }
         return out
     }

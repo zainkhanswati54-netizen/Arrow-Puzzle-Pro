@@ -87,6 +87,7 @@ import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
 import com.arrowpuzzle.game.core.motion.pulse
+import com.arrowpuzzle.game.core.motion.shakeOnce
 import com.arrowpuzzle.game.core.ui.AppTopBar
 import com.arrowpuzzle.game.core.ui.ConfettiOverlay
 import com.arrowpuzzle.game.core.ui.PrimaryPillButton
@@ -262,14 +263,30 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
     }
 
     // Brief red flash on a blocked tap — the rule engine already tracked
-    // lastError, it just wasn't surfaced visually before.
+    // lastError, it just wasn't surfaced visually before. Now smoothly
+    // animated (fade in/out) instead of an abrupt show/hide, and the flash
+    // token changes on every error so shakeOnce() re-fires even if the same
+    // cell is mis-tapped twice in a row.
     var shakeCell by remember(level) { mutableStateOf<CellKey?>(null) }
+    var errorToken by remember(level) { mutableStateOf(0) }
+    val errorFlash = remember(level) { Animatable(0f) }
     LaunchedEffect(puzzle.lastError) {
         if (puzzle.lastError != null) {
             shakeCell = puzzle.lastError
-            delay(300)
+            errorToken++
+            errorFlash.snapTo(1f)
+            errorFlash.animateTo(0f, tween(360, easing = Motion.Exit))
             if (shakeCell == puzzle.lastError) shakeCell = null
         }
+    }
+
+    // Level-start reveal — board scales/fades in from the centre, keyed on
+    // the level id, mirroring the competitor reference's board-appear beat
+    // instead of the maze just snapping into existence.
+    val boardEnter = remember(level) { Animatable(0f) }
+    LaunchedEffect(level) {
+        boardEnter.snapTo(0f)
+        boardEnter.animateTo(1f, tween(Motion.Slow, easing = Motion.Emphasized))
     }
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
@@ -279,7 +296,17 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
         val bw = cellSize * level.gridCols
         val bh = cellSize * level.gridRows
 
-        Box(Modifier.width(bw).height(bh)) {
+        Box(
+            Modifier
+                .width(bw).height(bh)
+                .graphicsLayer {
+                    val p = boardEnter.value
+                    alpha = p
+                    val s = 0.85f + 0.15f * p
+                    scaleX = s; scaleY = s
+                }
+                .shakeOnce(errorToken.takeIf { it > 0 })
+        ) {
             // Ghost layer — the full original board at low opacity. Once most
             // arrows are cleared this is what keeps the board from looking
             // broken/blank: the maze silhouette stays on screen throughout.
@@ -297,20 +324,28 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                         .background(Blue500.copy(alpha = 0.28f), CircleShape)
                 )
             }
-            // Blocked-tap flash.
+            // Blocked-tap flash — soft red glow behind the cell, fading out
+            // smoothly rather than popping on/off.
             shakeCell?.let { sc ->
                 Box(
                     Modifier
                         .offset(cellSize * sc.col, cellSize * sc.row)
                         .size(cellSize)
+                        .graphicsLayer { alpha = errorFlash.value }
                         .background(Red500.copy(alpha = 0.30f), CircleShape)
                 )
             }
 
             // Active layer — only arrows still in play, full ink, redrawn
-            // whenever the remaining set changes (i.e. once per tap).
+            // whenever the remaining set changes (i.e. once per tap). The
+            // cell that just triggered a blocked tap renders in red for the
+            // duration of the flash, same "path turns red" tell the
+            // competitor reference uses.
             Canvas(Modifier.fillMaxSize()) {
-                drawArrowLineNetwork(puzzle.remaining, cellSize.toPx(), Ink)
+                val highlight = shakeCell?.let { sc ->
+                    mapOf(sc to lerp(Ink, Red500, errorFlash.value))
+                } ?: emptyMap()
+                drawArrowLineNetwork(puzzle.remaining, cellSize.toPx(), Ink, highlight = highlight)
             }
 
             // Flying-off arrows: tapped cells animate off-board in their

@@ -155,6 +155,31 @@ fun Modifier.pulse(
     }
 }
 
+/**
+ * Short horizontal "no!" shake — fires once whenever [trigger] changes to a
+ * new non-null value. Used on a blocked/wrong tap, mirroring the competitor
+ * reference's shake-and-flash-red feedback instead of a plain static flash.
+ */
+@Composable
+fun Modifier.shakeOnce(trigger: Any?): Modifier {
+    val reduced = LocalReducedMotion.current
+    val offset = remember { Animatable(0f) }
+
+    LaunchedEffect(trigger) {
+        if (trigger == null || reduced) return@LaunchedEffect
+        // Fast damped back-and-forth: right, left, smaller right, settle.
+        offset.snapTo(0f)
+        offset.animateTo(1f, tween(50, easing = LinearEasing))
+        offset.animateTo(-1f, tween(70, easing = LinearEasing))
+        offset.animateTo(0.5f, tween(60, easing = LinearEasing))
+        offset.animateTo(0f, tween(60, easing = LinearEasing))
+    }
+
+    return graphicsLayer {
+        translationX = offset.value * 6f * density
+    }
+}
+
 /** Diagonal light sweep. Signals "this surface is a placeholder, not a dead pixel". */
 @Composable
 fun Modifier.shimmer(
