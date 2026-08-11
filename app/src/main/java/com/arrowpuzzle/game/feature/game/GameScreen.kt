@@ -1,6 +1,7 @@
 package com.arrowpuzzle.game.feature.game
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -36,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -51,7 +53,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -66,8 +68,8 @@ import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Ink
 import com.arrowpuzzle.game.core.design.Red500
+import com.arrowpuzzle.game.core.game.ArrowPiece
 import com.arrowpuzzle.game.core.game.CellKey
-import com.arrowpuzzle.game.core.game.Direction
 import com.arrowpuzzle.game.core.game.PuzzleEngine
 import com.arrowpuzzle.game.core.game.PuzzleState
 import com.arrowpuzzle.game.core.motion.Motion
@@ -113,7 +115,7 @@ fun GameScreen(
                     trailing = { LivesRow(puzzle.lives) }
                 )
 
-                // Arrow count + difficulty
+                // Piece count + difficulty
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -132,7 +134,7 @@ fun GameScreen(
                 // ── MAZE ──
                 MazeBoard(
                     puzzle = puzzle,
-                    hintCell = ui.hintCell,
+                    hintPieceId = ui.hintPieceId,
                     onCellTap = { r, c -> haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onCellTap(r, c) },
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)
                 )
@@ -175,10 +177,15 @@ fun GameScreen(
 
 // ── MAZE BOARD ───────────────────────────────────────────────────────────────
 
+/** Faint dots across every grid cell, occupied or not — the "grid guide" competitor
+ *  boards use so the board reads as a structured lattice, not loose floating pieces. */
+private val GridGuideDot = Color(0xFFD3DCE8)
+
 @Composable
-private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
+private fun MazeBoard(puzzle: PuzzleState, hintPieceId: Int?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
     val level = puzzle.level
-    val allCells = remember(level) { level.arrows.map { CellKey(it.row, it.col) }.toSet() }
+    val palette = AppTheme.palette
+    val allCells = remember(level) { level.pieces.flatMap { it.cells }.toSet() }
     val adjPairs = remember(level) { PuzzleEngine.adjacencyPairs(level) }
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
@@ -189,34 +196,69 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
         val bh = cellSize * level.gridRows
         val lineW = cellSize * 0.45f
 
-        Box(Modifier.width(bw).height(bh)) {
-            // Draw maze structure
-            Box(Modifier.fillMaxSize().drawWithCache {
-                val cs = cellSize.toPx()
-                val lw = lineW.toPx()
-                onDrawBehind {
-                    // Connecting lines
-                    for ((a, b) in adjPairs) {
-                        val ax = a.col * cs + cs / 2; val ay = a.row * cs + cs / 2
-                        val bx = b.col * cs + cs / 2; val by = b.row * cs + cs / 2
-                        val aR = a in puzzle.remaining; val bR = b in puzzle.remaining
-                        val col = when { aR && bR -> Ink; aR || bR -> Ink.copy(0.3f); else -> Blue500.copy(0.15f) }
-                        drawLine(col, Offset(ax, ay), Offset(bx, by), lw, StrokeCap.Round)
+        // Card backdrop behind the whole board — contains the grid instead of
+        // letting it float loose on the canvas background.
+        Box(
+            Modifier
+                .width(bw + 20.dp)
+                .height(bh + 20.dp)
+                .shadow(6.dp, RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(22.dp))
+                .background(palette.surface)
+        ) {
+            Box(Modifier.width(bw).height(bh).align(Alignment.Center)) {
+                // Draw maze structure: full dotted grid guide, then the connected
+                // "pipe" lines/nodes between adjacent occupied cells on top.
+                Box(Modifier.fillMaxSize().drawWithCache {
+                    val cs = cellSize.toPx()
+                    val lw = lineW.toPx()
+                    val dotR = cs * 0.045f
+                    onDrawBehind {
+                        // Grid guide — every cell in the board, empty or not.
+                        for (r in 0 until level.gridRows) for (c in 0 until level.gridCols) {
+                            val cx = c * cs + cs / 2; val cy = r * cs + cs / 2
+                            drawCircle(GridGuideDot, dotR, Offset(cx, cy))
+                        }
+                        // Connecting lines between occupied neighbours.
+                        for ((a, b) in adjPairs) {
+                            val ax = a.col * cs + cs / 2; val ay = a.row * cs + cs / 2
+                            val bx = b.col * cs + cs / 2; val by = b.row * cs + cs / 2
+                            val aR = a in allCells && a in puzzle.occupied; val bR = b in puzzle.occupied
+                            val col = when { aR && bR -> Ink; aR || bR -> Ink.copy(0.3f); else -> Blue500.copy(0.15f) }
+                            drawLine(col, Offset(ax, ay), Offset(bx, by), lw, StrokeCap.Round)
+                        }
+                        // Cell nodes for occupied cells.
+                        for (c in allCells) {
+                            val cx = c.col * cs + cs / 2; val cy = c.row * cs + cs / 2
+                            val inR = c in puzzle.occupied
+                            drawCircle(if (inR) Ink else Blue500.copy(0.12f), lw / 2, Offset(cx, cy))
+                        }
                     }
-                    // Cell nodes
-                    for (c in allCells) {
-                        val cx = c.col * cs + cs / 2; val cy = c.row * cs + cs / 2
-                        val inR = c in puzzle.remaining
-                        drawCircle(if (inR) Ink else Blue500.copy(0.12f), lw / 2, Offset(cx, cy))
-                    }
-                }
-            })
+                })
 
-            // Arrow glyphs
-            puzzle.remaining.forEach { (cell, dir) ->
-                key(cell) {
-                    ArrowTile(dir, cell == hintCell, cellSize, { onCellTap(cell.row, cell.col) },
-                        Modifier.offset(cellSize * cell.col, cellSize * cell.row).size(cellSize))
+                // One tile per remaining piece — a multi-cell "snake" renders as a
+                // single connected pipe with the arrowhead at its exit end, tappable
+                // anywhere along its body.
+                puzzle.remaining.values.forEach { piece ->
+                    key(piece.id) {
+                        val minRow = piece.cells.minOf { it.row }
+                        val minCol = piece.cells.minOf { it.col }
+                        val spanRows = piece.cells.maxOf { it.row } - minRow + 1
+                        val spanCols = piece.cells.maxOf { it.col } - minCol + 1
+                        PieceTile(
+                            piece = piece,
+                            isHint = piece.id == hintPieceId,
+                            isError = piece.id == puzzle.lastErrorId,
+                            moveCount = puzzle.moveCount,
+                            cellSize = cellSize,
+                            minRow = minRow,
+                            minCol = minCol,
+                            onTap = { onCellTap(piece.head.row, piece.head.col) },
+                            modifier = Modifier
+                                .offset(cellSize * minCol, cellSize * minRow)
+                                .size(cellSize * spanCols, cellSize * spanRows)
+                        )
+                    }
                 }
             }
         }
@@ -224,20 +266,53 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
 }
 
 @Composable
-private fun ArrowTile(dir: Direction, isHint: Boolean, cellSize: Dp, onTap: () -> Unit, modifier: Modifier) {
+private fun PieceTile(
+    piece: ArrowPiece,
+    isHint: Boolean,
+    isError: Boolean,
+    moveCount: Int,
+    cellSize: Dp,
+    minRow: Int,
+    minCol: Int,
+    onTap: () -> Unit,
+    modifier: Modifier
+) {
     val src = remember { MutableInteractionSource() }
-    Box(modifier.clickable(src, null, role = Role.Button, onClick = onTap)
-        .pressScale(src, 0.85f).padding(cellSize * 0.15f), Alignment.Center) {
-        val color = if (isHint) Blue500 else Color.White
-        Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = dir.degrees }
-            .drawWithCache {
-                val w = size.width; val h = size.height; val sw = w * 0.19f
-                val tipX = w * 0.86f; val midY = h * 0.5f; val hs = h * 0.26f
-                val shaft = Path().apply { moveTo(w * 0.14f, midY); lineTo(tipX - sw * 0.4f, midY) }
-                val head = Path().apply { moveTo(tipX - hs, midY - hs); lineTo(tipX, midY); lineTo(tipX - hs, midY + hs) }
-                val stroke = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                onDrawBehind { drawPath(shaft, color, style = stroke); drawPath(head, color, style = stroke) }
-            })
+    val flash = remember { Animatable(0f) }
+    LaunchedEffect(isError, moveCount) {
+        if (isError) { flash.snapTo(1f); flash.animateTo(0f, tween(380)) }
+    }
+
+    Box(modifier.clickable(src, null, role = Role.Button, onClick = onTap).pressScale(src, 0.92f)) {
+        val baseColor = if (isHint) Blue500 else Color.White
+        val head = piece.head
+        val tail = piece.cells.last()
+        Box(Modifier.fillMaxSize().drawWithCache {
+            val cs = cellSize.toPx()
+            val sw = cs * 0.19f
+            val hs = cs * 0.26f
+            val dir = piece.direction
+
+            val headPt = Offset((head.col - minCol + 0.5f) * cs, (head.row - minRow + 0.5f) * cs)
+            val tailPt = Offset((tail.col - minCol + 0.5f) * cs, (tail.row - minRow + 0.5f) * cs)
+            // Pull the shaft's end back from the head so the arrowhead has room.
+            val shaftEnd = Offset(headPt.x - dir.dx * hs * 0.55f, headPt.y - dir.dy * hs * 0.55f)
+            val shaft = Path().apply { moveTo(tailPt.x, tailPt.y); lineTo(shaftEnd.x, shaftEnd.y) }
+
+            val perpX = -dir.dy.toFloat(); val perpY = dir.dx.toFloat()
+            val headBack = Offset(headPt.x - dir.dx * hs, headPt.y - dir.dy * hs)
+            val headArrow = Path().apply {
+                moveTo(headBack.x + perpX * hs, headBack.y + perpY * hs)
+                lineTo(headPt.x, headPt.y)
+                lineTo(headBack.x - perpX * hs, headBack.y - perpY * hs)
+            }
+            val stroke = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            onDrawBehind {
+                val color = lerp(baseColor, Red500, flash.value)
+                drawPath(shaft, color, style = stroke)
+                drawPath(headArrow, color, style = stroke)
+            }
+        })
     }
 }
 
