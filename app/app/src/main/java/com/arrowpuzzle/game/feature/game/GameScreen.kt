@@ -70,6 +70,7 @@ import com.arrowpuzzle.game.core.design.Ink
 import com.arrowpuzzle.game.core.design.Red500
 import com.arrowpuzzle.game.core.game.CellKey
 import com.arrowpuzzle.game.core.game.Direction
+import com.arrowpuzzle.game.core.game.PuzzleEngine
 import com.arrowpuzzle.game.core.game.PuzzleState
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
@@ -148,6 +149,17 @@ fun GameScreen(
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress); SoundEngine.playButton(); vm.retry()
                     }
                 }
+
+                // Build tag — only exists in the pipe-rendering rewrite. If this
+                // is NOT visible on screen, the installed APK is still running
+                // the old renderer and needs a real rebuild, not just Retry.
+                Text(
+                    "engine: pipe-v2 · fill ${(PuzzleEngine.fillRatio(puzzle.level) * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.inkMuted.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    textAlign = TextAlign.Center
+                )
 
                 Spacer(Modifier.height(16.dp))
             }
