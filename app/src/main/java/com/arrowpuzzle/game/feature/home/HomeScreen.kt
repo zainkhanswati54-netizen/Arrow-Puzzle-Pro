@@ -60,7 +60,7 @@ fun HomeScreen(
     onPlayDaily: () -> Unit,
     onOpenTournament: () -> Unit,
     modifier: Modifier = Modifier,
-    currentLevel: Int = 2,
+    currentLevel: Int = 1,
     tournamentRank: Int = 112,
     tournamentEndsIn: String = "8d 07h"
 ) {

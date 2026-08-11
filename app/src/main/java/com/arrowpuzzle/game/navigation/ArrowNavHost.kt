@@ -170,7 +170,8 @@ fun ArrowPuzzleApp(
                     HomeScreen(
                         onPlayCampaign = { navController.navigate(Routes.game(levelId = savedLevel)) },
                         onPlayDaily = { navController.navigate(Routes.DailyGame) },
-                        onOpenTournament = { navController.navigate(Routes.Tournament) }
+                        onOpenTournament = { navController.navigate(Routes.Tournament) },
+                        currentLevel = savedLevel
                     )
                 }
 

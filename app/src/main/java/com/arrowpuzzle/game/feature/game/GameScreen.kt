@@ -75,7 +75,6 @@ import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
 import com.arrowpuzzle.game.core.motion.pulse
 import com.arrowpuzzle.game.core.ui.AppTopBar
-import com.arrowpuzzle.game.core.ui.ArrowBackdrop
 import com.arrowpuzzle.game.core.ui.PrimaryPillButton
 
 @Composable
@@ -97,7 +96,10 @@ fun GameScreen(
     val haptics = LocalHapticFeedback.current
 
     Box(modifier.fillMaxSize().background(palette.canvas)) {
-        ArrowBackdrop(tint = Color(0xFFE8EDF4))
+        // The animated arrow backdrop is decorative only — it was competing with
+        // the puzzle board's own touch/redraw work every frame and was the main
+        // source of jank on mid/low-end GPUs (reported on MediaTek G96 devices).
+        // Gameplay now renders on a plain background.
 
         if (ui.loading || puzzle == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

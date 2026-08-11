@@ -19,10 +19,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import com.arrowpuzzle.game.core.design.LocalReducedMotion
 import kotlin.math.sin
@@ -118,15 +115,10 @@ fun ArrowBackdrop(
     )
 }
 
-/** Fill plus a round-joined stroke — the cheapest way to get soft corners on a polygon. */
+/** Fill only — a redundant stroke pass on top of the fill was doubling the paint
+ *  work every frame for no visible gain, since the fill already covers the shape. */
 private fun DrawScope.drawBlade(path: Path, color: Color, bladeSize: Float) {
-    val corner = bladeSize * 0.09f
     drawPath(path = path, color = color)
-    drawPath(
-        path = path,
-        color = color,
-        style = Stroke(width = corner, join = StrokeJoin.Round, cap = StrokeCap.Round)
-    )
 }
 
 /** A wide, forward-leaning arrowhead — the mark used across the brand. */
