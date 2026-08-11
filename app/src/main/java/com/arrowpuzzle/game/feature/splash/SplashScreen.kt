@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -32,6 +31,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.arrowpuzzle.game.R
 import com.arrowpuzzle.game.core.design.AppTheme
@@ -133,6 +133,10 @@ private fun StudioIntroVideo(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 useController = false
+                // Fill the whole screen (crop instead of letterbox) so the bumper
+                // never shows black bars on phones whose aspect ratio differs
+                // from the source video.
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 player = exoPlayer
             }
         }
