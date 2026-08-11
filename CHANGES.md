@@ -1,3 +1,32 @@
+# Arrow Redesign — Sharp Line Renderer, Sound Pass, Slower Slide
+
+Requested changes: replace the thick rounded "pipe" arrows with a thin,
+sharp-cornered line style (per reference screenshot), make sound effects
+sound less like raw test-tone beeps, and slow the tap-clear animation down
+for better readability.
+
+## Files touched
+
+| File | Change |
+|---|---|
+| `core/ui/ArrowLineCanvas.kt` | **New** — `drawArrowLineNetwork` / `drawStandaloneArrowLine`: thin single-stroke shafts, sharp miter corners (no rounding), solid filled triangular heads. Replaces `PipeCanvas.kt`'s `drawPipeNetwork` / `drawStandaloneArrow` everywhere they were used. |
+| `feature/game/GameScreen.kt` | Swapped all 4 call sites (ghost layer, active layer, exit-fly animation, level thumbnail) from the pipe renderer to the new line renderer. Exit-slide animation slowed from 420ms/`Motion.Exit` to 650ms/`Motion.Standard` for a calmer, more visible slide. |
+| `core/audio/SoundEngine.kt` | Reworked every synthesized tone: soft attack envelope (no clicky onset), a quiet 2nd harmonic layered in for warmth. Added `playMove()` — an airy whoosh + soft landing tick for the arrow slide-off. |
+| `feature/game/GameViewModel.kt` | Wired `SoundEngine.playMove()` to fire alongside `playCorrect()` whenever a tap successfully escapes. |
+
+`core/ui/PipeCanvas.kt` is left in place but no longer referenced anywhere —
+kept only because `armsFor()` (the shared "which directions does this cell
+connect to" helper) still lives there and is reused by the new renderer.
+Safe to delete later if you want, but harmless as-is.
+
+**Not build-tested locally** — this sandbox has no network access to the
+Android/Google Maven repos, so Gradle can't resolve dependencies here. Please
+build in Android Studio and confirm; the changes are plain Compose
+`DrawScope` path code with no new dependencies, so risk is low, but worth a
+quick run before shipping.
+
+---
+
 # Diagnostic-Report Fixes — Density, Connected Pipe, Animations, Celebration
 
 Implemented directly from the frame-by-frame own-app-vs-competitor video

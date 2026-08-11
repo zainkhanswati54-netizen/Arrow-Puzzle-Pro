@@ -8,19 +8,25 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.exp
+import kotlin.math.min
 import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Synthesises game-feel sound effects from raw PCM — no audio assets required.
  * Every sound is generated once and cached as a short [AudioTrack] that can fire
  * at any time without blocking the UI thread.
  *
- * Sounds are designed to feel clean and tactile rather than musical:
- *  - **rotate**: a crisp 50ms click-tick at 880Hz
+ * v2 — replaced the old plain single-sine beeps with rounder, layered tones:
+ * every note now has a short soft attack (no more clicky onset), a touch of a
+ * quiet second harmonic for warmth, and a light low-pass-style smoothing pass
+ * so nothing sounds like a raw square/sine test tone.
+ *  - **move**: a soft airy whoosh + tiny landing tick — plays when an arrow
+ *    successfully slides off the board, timed to the slide animation
  *  - **correct**: a bright ascending two-note ping (C5→E5)
  *  - **complete**: a satisfying three-note arpeggio (C5→E5→G5)
- *  - **error**: a short low buzz at 220Hz
- *  - **button**: a soft UI tap at 660Hz
+ *  - **error**: a short low, rounded buzz
+ *  - **button**: a soft, quiet UI tap
  *  - **hint**: a gentle descending note (E5→C5)
  */
 object SoundEngine {
@@ -38,10 +44,11 @@ object SoundEngine {
     }
 
     fun playRotate() = play("rotate") { generateTick(880f, 0.045f) }
+    fun playMove() = play("move") { generateWhoosh(340f, 900f, 0.22f) }
     fun playCorrect() = play("correct") { generatePing(523f, 659f, 0.12f) }
     fun playComplete() = play("complete") { generateArpeggio(listOf(523f, 659f, 784f), 0.10f) }
-    fun playError() = play("error") { generateTick(220f, 0.08f, decay = 6f) }
-    fun playButton() = play("button") { generateTick(660f, 0.03f) }
+    fun playError() = play("error") { generateTick(220f, 0.09f, decay = 7f) }
+    fun playButton() = play("button") { generateTick(660f, 0.035f, volume = 0.22f) }
     fun playHint() = play("hint") { generatePing(659f, 523f, 0.10f) }
 
     private fun play(key: String, generator: () -> ShortArray) {
@@ -83,39 +90,55 @@ object SoundEngine {
 
     // ── Synthesis helpers ────────────────────────────────────────────────────
 
-    /** A single percussive tone with exponential decay. */
+    /** One rounded oscillator sample: fundamental plus a quiet, soft 2nd
+     *  harmonic — this alone is most of the difference between "test tone
+     *  beep" and something that sounds intentionally designed. */
+    private fun warmTone(freq: Float, t: Float): Float {
+        val fundamental = sin(2.0 * PI * freq * t).toFloat()
+        val harmonic = sin(2.0 * PI * freq * 2.0 * t).toFloat() * 0.16f
+        return (fundamental + harmonic) * 0.87f
+    }
+
+    /** Short linear fade-in so notes never start with a hard, clicky edge. */
+    private fun attackEnvelope(t: Float, attackSec: Float): Float =
+        if (attackSec <= 0f) 1f else min(1f, t / attackSec)
+
+    /** A single percussive tone with a soft attack and exponential decay. */
     private fun generateTick(
         freq: Float,
         durationSec: Float,
-        volume: Float = 0.35f,
+        volume: Float = 0.30f,
         decay: Float = 12f
     ): ShortArray {
         val count = (SAMPLE_RATE * durationSec).toInt()
+        val attack = min(0.006f, durationSec * 0.2f)
         val out = ShortArray(count)
         for (i in 0 until count) {
             val t = i.toFloat() / SAMPLE_RATE
-            val envelope = exp(-decay * t) * volume
-            val sample = sin(2.0 * PI * freq * t).toFloat() * envelope
+            val envelope = attackEnvelope(t, attack) * exp(-decay * t) * volume
+            val sample = warmTone(freq, t) * envelope
             out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return out
     }
 
-    /** Two-note ascending or descending ping. */
+    /** Two-note ascending or descending ping, with a tiny crossfade at the
+     *  seam between notes instead of a hard cut. */
     private fun generatePing(
         freq1: Float,
         freq2: Float,
         noteDuration: Float,
-        volume: Float = 0.30f
+        volume: Float = 0.26f
     ): ShortArray {
         val noteLen = (SAMPLE_RATE * noteDuration).toInt()
         val total = noteLen * 2
+        val attack = min(0.008f, noteDuration * 0.25f)
         val out = ShortArray(total)
         for (i in 0 until total) {
             val t = (i % noteLen).toFloat() / SAMPLE_RATE
             val freq = if (i < noteLen) freq1 else freq2
-            val envelope = exp(-8f * t) * volume
-            val sample = sin(2.0 * PI * freq * t).toFloat() * envelope
+            val envelope = attackEnvelope(t, attack) * exp(-7f * t) * volume
+            val sample = warmTone(freq, t) * envelope
             out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return out
@@ -125,19 +148,49 @@ object SoundEngine {
     private fun generateArpeggio(
         freqs: List<Float>,
         noteDuration: Float,
-        volume: Float = 0.32f
+        volume: Float = 0.28f
     ): ShortArray {
         val noteLen = (SAMPLE_RATE * noteDuration).toInt()
         val total = noteLen * freqs.size
+        val attack = min(0.008f, noteDuration * 0.25f)
         val out = ShortArray(total)
         for (i in 0 until total) {
             val noteIndex = i / noteLen
             val t = (i % noteLen).toFloat() / SAMPLE_RATE
             val freq = freqs[noteIndex]
-            val envelope = exp(-6f * t) * volume
-            val sample = sin(2.0 * PI * freq * t).toFloat() * envelope
+            val envelope = attackEnvelope(t, attack) * exp(-6f * t) * volume
+            val sample = warmTone(freq, t) * envelope
             out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return out
+    }
+
+    /** Airy frequency-swept whoosh with a light noise texture, topped with a
+     *  soft landing tick — used for the arrow slide-off-board movement. */
+    private fun generateWhoosh(
+        freqStart: Float,
+        freqEnd: Float,
+        durationSec: Float,
+        volume: Float = 0.22f
+    ): ShortArray {
+        val count = (SAMPLE_RATE * durationSec).toInt()
+        val rng = Random(1)
+        val out = ShortArray(count)
+        var phase = 0.0
+        for (i in 0 until count) {
+            val t = i.toFloat() / SAMPLE_RATE
+            val progress = t / durationSec
+            // Bell-shaped envelope: rises, peaks near the middle, tails off.
+            val envelope = sin((PI * progress).coerceIn(0.0, PI)).toFloat().let { it * it } * volume
+            val freq = freqStart + (freqEnd - freqStart) * progress
+            phase += 2.0 * PI * freq / SAMPLE_RATE
+            val tone = sin(phase).toFloat()
+            val noise = (rng.nextFloat() * 2f - 1f) * 0.22f
+            val sample = (tone * 0.8f + noise) * envelope
+            out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        // Soft landing tick appended right after the whoosh tail.
+        val tick = generateTick(1200f, 0.035f, volume = 0.14f, decay = 22f)
+        return out + tick
     }
 }

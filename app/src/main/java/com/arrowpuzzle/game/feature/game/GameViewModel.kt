@@ -73,7 +73,7 @@ class GameViewModel(
 
         when {
             next.isComplete -> SoundEngine.playComplete()
-            canEsc -> SoundEngine.playCorrect()
+            canEsc -> { SoundEngine.playMove(); SoundEngine.playCorrect() }
             else -> SoundEngine.playError()
         }
 

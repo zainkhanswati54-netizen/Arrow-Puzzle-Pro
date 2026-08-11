@@ -91,8 +91,8 @@ import com.arrowpuzzle.game.core.ui.AppTopBar
 import com.arrowpuzzle.game.core.ui.ConfettiOverlay
 import com.arrowpuzzle.game.core.ui.PrimaryPillButton
 import com.arrowpuzzle.game.core.ui.SunburstBackground
-import com.arrowpuzzle.game.core.ui.drawPipeNetwork
-import com.arrowpuzzle.game.core.ui.drawStandaloneArrow
+import com.arrowpuzzle.game.core.ui.drawArrowLineNetwork
+import com.arrowpuzzle.game.core.ui.drawStandaloneArrowLine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -249,7 +249,11 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                 val anim = Animatable(0f)
                 exitAnims[newCell] = ExitAnim(dir, anim)
                 scope.launch {
-                    anim.animateTo(1f, tween(420, easing = Motion.Exit))
+                    // Slowed and softened from the original quick "yeet off
+                    // screen" — a longer, evenly-eased slide reads as more
+                    // deliberate and lets the player actually see the arrow
+                    // travel its path instead of just vanishing.
+                    anim.animateTo(1f, tween(650, easing = Motion.Standard))
                     exitAnims.remove(newCell)
                 }
             }
@@ -280,7 +284,7 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
             // arrows are cleared this is what keeps the board from looking
             // broken/blank: the maze silhouette stays on screen throughout.
             Canvas(Modifier.fillMaxSize()) {
-                drawPipeNetwork(ghostCells, cellSize.toPx(), Ink.copy(alpha = 0.10f))
+                drawArrowLineNetwork(ghostCells, cellSize.toPx(), Ink.copy(alpha = 0.10f))
             }
 
             // Hint glow, drawn under the active pipe so the pipe reads on top.
@@ -306,7 +310,7 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
             // Active layer — only arrows still in play, full ink, redrawn
             // whenever the remaining set changes (i.e. once per tap).
             Canvas(Modifier.fillMaxSize()) {
-                drawPipeNetwork(puzzle.remaining, cellSize.toPx(), Ink)
+                drawArrowLineNetwork(puzzle.remaining, cellSize.toPx(), Ink)
             }
 
             // Flying-off arrows: tapped cells animate off-board in their
@@ -331,7 +335,7 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                     ) {
                         Canvas(Modifier.fillMaxSize()) {
                             val col = lerp(Ink, Blue500, (exit.progress.value / 0.3f).coerceIn(0f, 1f))
-                            drawStandaloneArrow(exit.direction, size.minDimension, col)
+                            drawStandaloneArrowLine(exit.direction, size.minDimension, col)
                         }
                     }
                 }
@@ -451,7 +455,7 @@ private fun LevelThumbnail(level: Level, sizeDp: Dp) {
     val cells = remember(level) { level.arrows.associate { CellKey(it.row, it.col) to it.direction } }
     val cellPx = with(LocalDensity.current) { sizeDp.toPx() / maxOf(level.gridRows, level.gridCols) }
     Canvas(Modifier.size(sizeDp)) {
-        drawPipeNetwork(cells, cellPx, Ink, pipeWidthFraction = 0.26f)
+        drawArrowLineNetwork(cells, cellPx, Ink)
     }
 }
 
