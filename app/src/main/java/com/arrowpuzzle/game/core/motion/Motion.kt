@@ -28,29 +28,32 @@ object Motion {
     val Exit: Easing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 
     // Durations (ms) --------------------------------------------------------
-    const val Instant = 90
-    const val Quick = 160
-    const val Normal = 260
-    const val Slow = 420
-    const val Ambient = 900
+    // Slowed down from the original vocabulary (Instant 90/Quick 160/Normal 260/
+    // Slow 420/Ambient 900) — calmer motion also means fewer frames of work per
+    // transition, which is part of what was making the app feel laggy.
+    const val Instant = 120
+    const val Quick = 220
+    const val Normal = 360
+    const val Slow = 560
+    const val Ambient = 1200
 
     // Springs ---------------------------------------------------------------
     /** Buttons and taps: fast, barely any wobble. */
     fun <T> snappy(): FiniteAnimationSpec<T> = spring(
-        dampingRatio = 0.82f,
-        stiffness = Spring.StiffnessMedium
+        dampingRatio = 0.9f,
+        stiffness = Spring.StiffnessLow
     )
 
-    /** Cards and sheets: a touch of overshoot to feel physical. */
+    /** Cards and sheets: gentle settle, overshoot dialed back so it doesn't wobble. */
     fun <T> bouncy(): FiniteAnimationSpec<T> = spring(
-        dampingRatio = 0.62f,
-        stiffness = 380f
+        dampingRatio = 0.78f,
+        stiffness = 220f
     )
 
-    /** Celebratory pops — stars, trophies, level complete. */
+    /** Celebratory pops — stars, trophies, level complete. Still lively, less frantic. */
     fun <T> playful(): FiniteAnimationSpec<T> = spring(
-        dampingRatio = 0.45f,
-        stiffness = 320f
+        dampingRatio = 0.58f,
+        stiffness = 200f
     )
 
     /** Large surfaces where a spring would look nervous. */

@@ -12,11 +12,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.SupportAgent
-import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,9 +22,7 @@ import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Amber500
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Green500
-import com.arrowpuzzle.game.core.design.Indigo500
 import com.arrowpuzzle.game.core.design.Lime500
-import com.arrowpuzzle.game.core.design.Teal500
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.ui.AppTopBar
@@ -109,21 +105,7 @@ fun MeScreen(
                     label = "About Game",
                     icon = Icons.Rounded.Info,
                     tint = Blue500,
-                    showDivider = true,
                     onClick = { onNavigate(Routes.About) }
-                )
-                SettingsRow(
-                    label = "Privacy Rights",
-                    icon = Icons.Rounded.VerifiedUser,
-                    tint = Indigo500,
-                    showDivider = true,
-                    onClick = { onNavigate(Routes.PrivacyRights) }
-                )
-                SettingsRow(
-                    label = "Privacy Preferences",
-                    icon = Icons.Rounded.PrivacyTip,
-                    tint = Teal500,
-                    onClick = { onNavigate(Routes.PrivacyPreferences) }
                 )
             }
 

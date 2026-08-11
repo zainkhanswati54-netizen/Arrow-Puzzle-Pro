@@ -17,16 +17,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +43,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.arrowpuzzle.game.core.data.AppSettings
 import com.arrowpuzzle.game.core.design.AppTheme
-import com.arrowpuzzle.game.core.design.Amber500
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Indigo500
 import com.arrowpuzzle.game.core.design.Red500
@@ -48,7 +50,6 @@ import com.arrowpuzzle.game.core.design.Teal500
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.ui.AppTopBar
-import com.arrowpuzzle.game.core.ui.ComingSoonBadge
 import com.arrowpuzzle.game.core.ui.GroupCard
 import com.arrowpuzzle.game.core.ui.SettingsRow
 
@@ -63,11 +64,13 @@ fun SettingsScreen(
     onSound: (Boolean) -> Unit,
     onMusic: (Boolean) -> Unit,
     onHaptics: (Boolean) -> Unit,
+    onResetProgress: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = AppTheme.palette
     val spacing = AppTheme.spacing
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -119,24 +122,36 @@ fun SettingsScreen(
 
             GroupCard(modifier = Modifier.enterFromBelow(delayMillis = Motion.stagger(1))) {
                 SettingsRow(
-                    label = "Language",
-                    icon = Icons.Rounded.Language,
-                    tint = Amber500,
-                    showDivider = true,
-                    trailing = { ComingSoonBadge() },
-                    onClick = {}
-                )
-                SettingsRow(
                     label = "Reset progress",
                     icon = Icons.Rounded.RestartAlt,
                     tint = Red500,
-                    trailing = { ComingSoonBadge() },
-                    onClick = {}
+                    onClick = { showResetConfirm = true }
                 )
             }
 
             Spacer(Modifier.height(spacing.huge))
         }
+    }
+
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text("Reset progress?") },
+            text = { Text("This clears all campaign levels and daily stars you've earned. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetConfirm = false
+                    onResetProgress()
+                }) {
+                    Text("Reset", color = Red500)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

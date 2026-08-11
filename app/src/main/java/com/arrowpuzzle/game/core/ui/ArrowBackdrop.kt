@@ -14,6 +14,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -47,18 +48,20 @@ private data class Blade(
     val alpha: Float
 )
 
+// Kept inside the middle of the canvas and sized down a bit so nothing gets
+// cropped awkwardly at the screen edges — that clipped, floating-arrow look was
+// the "unusual loading screen" issue.
 private val DefaultBlades = listOf(
-    Blade(0.46f, 0.08f, 0.62f, 24f, 0.00f, 1.0f, 0.55f),
-    Blade(0.34f, 0.30f, 0.72f, 18f, 0.35f, 0.8f, 0.75f),
-    Blade(0.62f, 0.72f, 0.66f, 32f, 0.62f, 1.2f, 0.45f),
-    Blade(0.28f, 0.94f, 0.55f, 12f, 0.85f, 0.9f, 0.35f)
+    Blade(0.50f, 0.22f, 0.40f, 24f, 0.00f, 0.6f, 0.35f),
+    Blade(0.30f, 0.42f, 0.46f, 18f, 0.35f, 0.5f, 0.45f),
+    Blade(0.68f, 0.62f, 0.42f, 32f, 0.62f, 0.7f, 0.30f)
 )
 
 @Composable
 fun ArrowBackdrop(
     modifier: Modifier = Modifier,
     tint: Color = Color(0xFFE7ECF3),
-    periodMillis: Int = 14_000
+    periodMillis: Int = 20_000
 ) {
     val reduced = LocalReducedMotion.current
     val staticPhase = remember { mutableFloatStateOf(0.2f) }
@@ -83,6 +86,7 @@ fun ArrowBackdrop(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .clipToBounds()
             .drawBehind {
                 val t = phase.value
                 DefaultBlades.forEach { blade ->

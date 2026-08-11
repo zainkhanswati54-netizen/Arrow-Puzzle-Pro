@@ -121,5 +121,10 @@ class GameViewModel(
 
         /** Read saved progress. */
         fun readProgress(ctx: Context) = ctx.progressStore.data.map { it[KEY_LEVEL] ?: 1 }
+
+        /** Wipes campaign progress back to level 1. Used by Settings > Reset progress. */
+        suspend fun resetProgress(ctx: Context) {
+            ctx.progressStore.edit { prefs -> prefs[KEY_LEVEL] = 1 }
+        }
     }
 }

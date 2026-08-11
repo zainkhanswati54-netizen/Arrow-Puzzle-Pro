@@ -56,6 +56,11 @@ class DailyPreferences(private val context: Context) {
             prefs[Keys.CompletedDays] = current.joinToString(",")
         }
     }
+
+    /** Clears every completed daily-challenge star. Used by Settings > Reset progress. */
+    suspend fun resetProgress() {
+        context.dailyStore.edit { prefs -> prefs[Keys.CompletedDays] = "" }
+    }
 }
 
 data class DailyUiState(

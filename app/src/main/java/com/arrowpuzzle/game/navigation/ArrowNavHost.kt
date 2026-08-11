@@ -50,6 +50,7 @@ import com.arrowpuzzle.game.feature.me.MeScreen
 import com.arrowpuzzle.game.feature.settings.SettingsScreen
 import com.arrowpuzzle.game.feature.splash.SplashScreen
 import com.arrowpuzzle.game.feature.tournament.TournamentScreen
+import kotlinx.coroutines.launch
 
 private const val SlideFraction = 6
 
@@ -211,11 +212,18 @@ fun ArrowPuzzleApp(
                 }
 
                 composable(Routes.Settings) {
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
                     SettingsScreen(
                         settings = settings,
                         onSound = appViewModel::setSound,
                         onMusic = appViewModel::setMusic,
                         onHaptics = appViewModel::setHaptics,
+                        onResetProgress = {
+                            scope.launch {
+                                GameViewModel.resetProgress(ctx)
+                                com.arrowpuzzle.game.feature.daily.DailyPreferences(ctx).resetProgress()
+                            }
+                        },
                         onBack = navController::popBackStack
                     )
                 }
