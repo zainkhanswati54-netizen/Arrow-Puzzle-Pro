@@ -49,6 +49,7 @@ import com.arrowpuzzle.game.feature.info.PrivacyRightsScreen
 import com.arrowpuzzle.game.feature.me.MeScreen
 import com.arrowpuzzle.game.feature.settings.SettingsScreen
 import com.arrowpuzzle.game.feature.splash.SplashScreen
+import com.arrowpuzzle.game.feature.tournament.TournamentScreen
 
 private const val SlideFraction = 6
 
@@ -249,13 +250,9 @@ fun ArrowPuzzleApp(
                 }
 
                 composable(Routes.Tournament) {
-                    ComingSoonScreen(
-                        title = "Tournament",
-                        headline = "Compete on a fresh board",
-                        body = "Weekly brackets with a shared puzzle set and a live leaderboard.",
-                        icon = Icons.Rounded.EmojiEvents,
-                        accent = Orange600,
-                        onBack = navController::popBackStack
+                    TournamentScreen(
+                        onBack = navController::popBackStack,
+                        onPlay = { navController.navigate(Routes.game(mode = GameMode.Tournament, levelId = savedLevel)) }
                     )
                 }
             }

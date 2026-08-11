@@ -1,5 +1,7 @@
 package com.arrowpuzzle.game.feature.splash
 
+import android.net.Uri
+import android.view.ViewGroup
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -9,39 +11,141 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.arrowpuzzle.game.R
 import com.arrowpuzzle.game.core.design.AppTheme
+import com.arrowpuzzle.game.core.design.Palette
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.ui.ArrowBackdrop
 import kotlinx.coroutines.delay
 
 /**
- * Two seconds of held attention, spent well: the arrow field is already drifting
- * when the first frame lands, and the mark springs in over it. The handoff to the
- * next screen is a crossfade, so there is never a white flash.
+ * The Mentric Studios bumper plays first — a few seconds of held attention before
+ * the app mark itself appears. On reduced-motion, or if the video ever fails to
+ * load, we skip straight to the mark so nobody is ever stuck on a blank frame.
  */
 @Composable
 fun SplashScreen(
     onReady: () -> Unit,
     modifier: Modifier = Modifier,
-    holdMillis: Long = 1400
+    holdMillis: Long = 900,
+    studioVideoRes: Int = R.raw.mentric_studios_intro
 ) {
     val palette = AppTheme.palette
     val reduced = AppTheme.reducedMotion
     val currentOnReady by rememberUpdatedState(onReady)
+    var studioIntroDone by remember { mutableStateOf(reduced) }
 
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!studioIntroDone) {
+            StudioIntroVideo(
+                videoRes = studioVideoRes,
+                onFinished = { studioIntroDone = true }
+            )
+        } else {
+            AppMark(
+                palette = palette,
+                reduced = reduced,
+                holdMillis = holdMillis,
+                onReady = { currentOnReady() }
+            )
+        }
+    }
+}
+
+/** Plays the bundled studio bumper once, full-bleed, no controls. */
+@Composable
+private fun StudioIntroVideo(
+    videoRes: Int,
+    onFinished: () -> Unit
+) {
+    val context = LocalContext.current
+    val currentOnFinished by rememberUpdatedState(onFinished)
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val uri = Uri.parse("android.resource://${context.packageName}/$videoRes")
+            setMediaItem(MediaItem.fromUri(uri))
+            repeatMode = Player.REPEAT_MODE_OFF
+            playWhenReady = true
+            prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    currentOnFinished()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // Never let a codec/device quirk strand the player on a black screen.
+                currentOnFinished()
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    // Safety net: if playback never reaches STATE_ENDED on some device, move on anyway.
+    LaunchedEffect(Unit) {
+        delay(6000)
+        currentOnFinished()
+    }
+
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = {
+            PlayerView(it).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                useController = false
+                player = exoPlayer
+            }
+        }
+    )
+}
+
+/** The mark springs in over the arrow field, then hands off with a crossfade. */
+@Composable
+private fun AppMark(
+    palette: Palette,
+    reduced: Boolean,
+    holdMillis: Long,
+    onReady: () -> Unit
+) {
     val markScale = remember { Animatable(if (reduced) 1f else 0.62f) }
     val markAlpha = remember { Animatable(if (reduced) 1f else 0f) }
     val glow = remember { Animatable(0f) }
@@ -55,11 +159,11 @@ fun SplashScreen(
             glow.animateTo(1f, tween(Motion.Slow, easing = Motion.Standard))
         }
         delay(holdMillis)
-        currentOnReady()
+        onReady()
     }
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(palette.canvas),
         contentAlignment = Alignment.Center
