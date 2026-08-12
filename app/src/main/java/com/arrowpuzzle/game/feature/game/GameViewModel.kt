@@ -73,8 +73,16 @@ class GameViewModel(
         val next = PuzzleEngine.tap(cur, cell)
 
         when {
+            // Level complete keeps its celebratory buzz — that one's earned.
             next.isComplete -> { SoundEngine.playComplete(); Haptics.levelComplete() }
-            canEsc -> { SoundEngine.playMove(); Haptics.tapCorrect() }
+            // A correct tap plays its click but stays silent on the vibrator —
+            // buzzing on every single successful tap got noisy/fatiguing over
+            // a full board, and the pipe visually flying off already reads as
+            // "that worked" without needing a physical pulse too.
+            canEsc -> { SoundEngine.playMove() }
+            // Wrong/blocked taps are the one case that should be felt, not
+            // just heard — a firmer buzz paired with the error sound so a
+            // mis-tap is unmistakable even with the phone muted or in a pocket.
             else -> { SoundEngine.playError(); Haptics.tapWrong() }
         }
 
@@ -87,19 +95,37 @@ class GameViewModel(
         if (next.isComplete && !isDaily) saveProgress(currentLevelNum + 1)
     }
 
+    /**
+     * Reveals one hint and spends the charge that unlocked it.
+     *
+     * Bug fixed here: this used to only check `hintsRemaining > 0` and
+     * highlight a cell — it never actually decremented the counter. Once a
+     * player watched a single ad, `hintsRemaining` got bumped to 1 and then
+     * sat there forever, so every hint after the first came for free with no
+     * ad required. Since hints are ad-only (see [PuzzleState.hintsRemaining]),
+     * every call here now spends exactly the one charge it was granted.
+     */
     fun onHint() {
         val cur = _state.value.puzzle ?: return
         if (cur.hintsRemaining <= 0) { SoundEngine.playError(); Haptics.tapWrong(); return }
         val h = PuzzleEngine.findHint(cur)
-        if (h != null) { SoundEngine.playHint(); Haptics.tapButton(); _state.value = _state.value.copy(hintCell = h) }
-        else { SoundEngine.playError(); Haptics.tapWrong() }
+        val spent = cur.copy(hintsRemaining = cur.hintsRemaining - 1)
+        if (h != null) {
+            SoundEngine.playHint(); Haptics.tapButton()
+            _state.value = _state.value.copy(puzzle = spent, hintCell = h)
+        } else {
+            // No escapable arrow exists right now (shouldn't happen on a
+            // solvable board, but never eat the player's earned charge on a
+            // dead-end lookup).
+            SoundEngine.playError(); Haptics.tapWrong()
+        }
     }
 
-    /** Grants one extra hint (e.g. after a rewarded ad) and immediately reveals it. */
+    /** Grants exactly one hint charge (earned by watching a rewarded ad) and
+     *  immediately reveals it. */
     fun grantBonusHint() {
         val cur = _state.value.puzzle ?: return
-        val boosted = cur.copy(hintsRemaining = cur.hintsRemaining + 1)
-        _state.value = _state.value.copy(puzzle = boosted)
+        _state.value = _state.value.copy(puzzle = cur.copy(hintsRemaining = cur.hintsRemaining + 1))
         onHint()
     }
 

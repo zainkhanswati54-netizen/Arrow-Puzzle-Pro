@@ -18,8 +18,21 @@ import com.google.android.ump.ConsentDebugSettings
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 private const val TAG = "AdManager"
+
+/** Where the Hint rewarded-interstitial currently stands, for the Hint
+ *  button to react to (spinner while loading, dim + retry hint on repeated
+ *  failure) instead of the button just silently doing nothing on tap. */
+enum class HintAdState { LOADING, READY, UNAVAILABLE }
 
 /**
  * Single owner of every ad unit's lifecycle: consent, loading, caching, and
@@ -31,10 +44,20 @@ object AdManager {
 
     private var initialized = false
     private lateinit var consentInformation: ConsentInformation
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var interstitialAd: InterstitialAd? = null
     private var rewardedInterstitialAd: RewardedInterstitialAd? = null
     private var rewardedAd: RewardedAd? = null
+
+    // Hint ad is the one placement gameplay actually blocks on (there are no
+    // free hints), so unlike the other two it gets an observable state the
+    // Hint button can react to live, plus its own retry loop with backoff —
+    // a single failed load (e.g. a brief network drop) used to mean the
+    // button just silently stopped working until the next app restart.
+    private val _hintAdState = MutableStateFlow(HintAdState.LOADING)
+    val hintAdState: StateFlow<HintAdState> = _hintAdState.asStateFlow()
+    private var hintRetryAttempt = 0
 
     // Frequency cap for the interstitial: shows after the very first level so
     // monetization starts immediately, then again after every completion.
@@ -145,18 +168,36 @@ object AdManager {
 
     private fun loadRewardedInterstitial(context: Context) {
         if (rewardedInterstitialAd != null) return
+        _hintAdState.value = HintAdState.LOADING
         RewardedInterstitialAd.load(
             context, AdIds.REWARDED_INTERSTITIAL_HINT, AdRequest.Builder().build(),
             object : RewardedInterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: RewardedInterstitialAd) {
                     rewardedInterstitialAd = ad
+                    hintRetryAttempt = 0
+                    _hintAdState.value = HintAdState.READY
                 }
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     Log.d(TAG, "Rewarded interstitial failed to load: ${error.message}")
                     rewardedInterstitialAd = null
+                    _hintAdState.value = HintAdState.UNAVAILABLE
+                    scheduleHintRetry(context)
                 }
             }
         )
+    }
+
+    /** Backs off 5s → 10s → 20s … capped at 2min, and keeps retrying forever
+     *  in the background — a hint that "just started working again" once the
+     *  network comes back beats one that's dead until the player force-quits. */
+    private fun scheduleHintRetry(context: Context) {
+        val attempt = hintRetryAttempt.coerceAtMost(4)
+        hintRetryAttempt++
+        val delayMs = (5_000L shl attempt).coerceAtMost(120_000L)
+        scope.launch {
+            delay(delayMs)
+            loadRewardedInterstitial(context)
+        }
     }
 
     fun isHintAdReady(): Boolean = rewardedInterstitialAd != null
@@ -168,7 +209,6 @@ object AdManager {
             loadRewardedInterstitial(activity)
             return
         }
-        var earned = false
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
                 rewardedInterstitialAd = null
@@ -180,8 +220,10 @@ object AdManager {
                 onUnavailable()
             }
         }
-        ad.show(activity) { earned = true; onEarned() }
-        if (!earned) Unit // reward callback fires asynchronously; nothing further needed here
+        // onUserEarnedReward is the only source of truth for the reward —
+        // it only fires once the player has actually watched through, so
+        // onEarned() here is never called for a skipped/closed-early ad.
+        ad.show(activity) { onEarned() }
     }
 
     // ── Rewarded ad (used for "double coins" / "continue" on game over) ────

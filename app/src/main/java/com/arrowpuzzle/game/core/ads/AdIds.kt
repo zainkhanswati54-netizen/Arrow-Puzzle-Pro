@@ -19,15 +19,18 @@ object AdIds {
         get() = if (BuildConfig.DEBUG) "ca-app-pub-3940256099942544/1033173712"
         else "ca-app-pub-9019700052213764/3725838572"
 
-    // ⚠️ The unit ID sent for "Rewarded interstitial – Hint" was the App ID
-    // repeated twice, not an actual ad-unit ID (those look like
-    // ca-app-pub-XXXXXXXXXXXXXXXX/NNNNNNNNNN). Falling back to Google's
-    // public test ID so the build compiles and hint-ads work in the
-    // meantime — swap this for the real ad-unit ID from AdMob once you have
-    // it, or this will keep serving test ads in production.
+    // ⚠️ ACTION NEEDED — this is the one ad unit still on Google's public
+    // test ID in release builds. Since hints are now ad-only (no free
+    // hints — see PuzzleState.hintsRemaining), this is the ad real players
+    // will hit constantly, so it needs a real unit before shipping:
+    //   1. AdMob console → Apps → Arrow Puzzle → Ad units
+    //   2. Create (or find) the "Rewarded interstitial" unit for Hint
+    //   3. Replace the release-branch string below with it — it will look
+    //      like ca-app-pub-9019700052213764/NNNNNNNNNN (same app ID as the
+    //      other units above, different 10-digit suffix).
     val REWARDED_INTERSTITIAL_HINT: String
         get() = if (BuildConfig.DEBUG) "ca-app-pub-3940256099942544/5354046379"
-        else "ca-app-pub-3940256099942544/5354046379" // TODO: replace with real unit ID
+        else "ca-app-pub-3940256099942544/5354046379" // TODO: replace with real unit ID before release
 
     val REWARDED_ARROW: String
         get() = if (BuildConfig.DEBUG) "ca-app-pub-3940256099942544/5224354917"

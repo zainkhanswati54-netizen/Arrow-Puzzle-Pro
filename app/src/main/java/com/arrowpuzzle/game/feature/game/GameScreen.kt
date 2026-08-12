@@ -73,6 +73,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arrowpuzzle.game.core.ads.AdManager
 import com.arrowpuzzle.game.core.ads.BannerAdView
+import com.arrowpuzzle.game.core.ads.HintAdState
 import com.arrowpuzzle.game.core.audio.SoundEngine
 import com.arrowpuzzle.game.core.data.AppViewModel
 import com.arrowpuzzle.game.core.design.AppTheme
@@ -220,20 +221,34 @@ fun GameScreen(
                     Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)
                 ) {
-                    ToolBtn(Icons.Rounded.Lightbulb, "Hint", puzzle.hintsRemaining) {
-                        if (puzzle.hintsRemaining > 0) {
-                            vm.onHint()
-                        } else if (activity != null && AdManager.isHintAdReady()) {
-                            Haptics.tapButton()
-                            AdManager.showRewardedInterstitialForHint(
-                                activity,
-                                onEarned = { vm.grantBonusHint() },
-                                onUnavailable = { SoundEngine.playError(); Haptics.tapWrong() }
-                            )
-                        } else {
-                            SoundEngine.playError(); Haptics.tapWrong()
+                    val hintAdState by AdManager.hintAdState.collectAsState()
+                    ToolBtn(
+                        icon = Icons.Rounded.Lightbulb,
+                        label = "Hint",
+                        badge = puzzle.hintsRemaining,
+                        loading = hintAdState == HintAdState.LOADING,
+                        onClick = {
+                            when {
+                                // Already-earned charge on the board (e.g. the
+                                // reward callback landed a beat after the ad
+                                // closed) — reveal it immediately, no ad needed.
+                                puzzle.hintsRemaining > 0 -> vm.onHint()
+                                activity != null && AdManager.isHintAdReady() -> {
+                                    Haptics.tapButton()
+                                    AdManager.showRewardedInterstitialForHint(
+                                        activity,
+                                        onEarned = { vm.grantBonusHint() },
+                                        onUnavailable = { SoundEngine.playError(); Haptics.tapWrong() }
+                                    )
+                                }
+                                // Ad still loading — a wrong-tap buzz here would
+                                // wrongly read as "you made an invalid move", so
+                                // this stays a quiet, distinct little tick instead.
+                                hintAdState == HintAdState.LOADING -> Haptics.tapButton()
+                                else -> { SoundEngine.playError(); Haptics.tapWrong() }
+                            }
                         }
-                    }
+                    )
                     ToolBtn(Icons.Rounded.Refresh, "Retry") {
                         Haptics.tapButton(); SoundEngine.playButton(); vm.retry()
                     }
@@ -305,7 +320,16 @@ fun GameScreen(
 
 // ── MAZE BOARD ───────────────────────────────────────────────────────────────
 
-private class ExitAnim(val direction: Direction, val progress: Animatable<Float, AnimationVector1D>)
+private class ExitAnim(
+    val direction: Direction,
+    val progress: Animatable<Float, AnimationVector1D>,
+    // Tiny backward "wind-up" before the forward slide (anticipation — one of
+    // the classic animation principles): the arrow nudges opposite its
+    // travel direction for a couple frames before shooting off, the same way
+    // a released bowstring or a flicked object briefly recoils first. Makes
+    // the exit read as something that *launched* rather than just translated.
+    val windUp: Animatable<Float, AnimationVector1D>
+)
 
 @Composable
 private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, Int) -> Unit, modifier: Modifier) {
@@ -324,8 +348,17 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
             val dir = ghostCells[newCell]
             if (dir != null && newCell !in exitAnims) {
                 val anim = Animatable(0f)
-                exitAnims[newCell] = ExitAnim(dir, anim)
+                val windUp = Animatable(0f)
+                exitAnims[newCell] = ExitAnim(dir, anim, windUp)
                 scope.launch {
+                    // Anticipation: a quick, small recoil opposite the travel
+                    // direction before the launch — fires and settles back to
+                    // 0 in ~90ms, fast enough it reads as a "wind-up snap"
+                    // rather than a separate, noticeable step.
+                    launch {
+                        windUp.animateTo(1f, tween(55, easing = Motion.Standard))
+                        windUp.animateTo(0f, tween(90, easing = Motion.Exit))
+                    }
                     // Slowed and softened from the original quick "yeet off
                     // screen" — a longer, evenly-eased slide reads as more
                     // deliberate and lets the player actually see the arrow
@@ -437,8 +470,11 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                                 val p = exit.progress.value
                                 val cellPx = cellSize.toPx()
                                 val dist = cellPx * (level.gridCols + level.gridRows) * 0.65f
-                                translationX = exit.direction.dx * p * dist
-                                translationY = exit.direction.dy * p * dist
+                                // Wind-up recoils a small fraction of a cell backward,
+                                // then the main slide takes over and quickly outpaces it.
+                                val recoil = -exit.windUp.value * cellPx * 0.16f
+                                translationX = exit.direction.dx * (p * dist + recoil)
+                                translationY = exit.direction.dy * (p * dist + recoil)
                                 // Quick punch-pop in the first ~12% of the exit before the
                                 // stretch-and-fly takes over — reads as an immediate,
                                 // satisfying "hit" on tap instead of a delayed slide.
@@ -462,7 +498,10 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                 }
             }
 
-            // Invisible tap targets — one per remaining cell.
+            // Invisible tap targets — one per remaining cell. Also carries a
+            // tiny press-down squash so a finger landing on an arrow gets an
+            // instant response, instead of the UI staying completely inert
+            // until the tap is fully resolved into a slide or a shake.
             puzzle.remaining.keys.forEach { cell ->
                 key(cell) {
                     val src = remember { MutableInteractionSource() }
@@ -470,6 +509,7 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                         Modifier
                             .offset(cellSize * cell.col, cellSize * cell.row)
                             .size(cellSize)
+                            .pressScale(src, 0.88f)
                             .clickable(src, null, role = Role.Button) { onCellTap(cell.row, cell.col) }
                     )
                 }
@@ -502,9 +542,12 @@ private fun StatChip(text: String, modifier: Modifier = Modifier, leading: (@Com
     }
 }
 
-/** Small circular icon action button — Hint / Retry, matching the reference's compact tool row. */
+/** Small circular icon action button — Hint / Retry, matching the reference's compact tool row.
+ *  [loading] shows a thin spinner ring in place of the badge (used while the
+ *  Hint ad is still fetching) so a tap that can't do anything yet reads as
+ *  "one moment" instead of silently doing nothing. */
 @Composable
-private fun ToolBtn(icon: ImageVector, label: String, badge: Int? = null, onClick: () -> Unit) {
+private fun ToolBtn(icon: ImageVector, label: String, badge: Int? = null, loading: Boolean = false, onClick: () -> Unit) {
     val pal = AppTheme.palette
     val src = remember { MutableInteractionSource() }
     Box(
@@ -517,8 +560,14 @@ private fun ToolBtn(icon: ImageVector, label: String, badge: Int? = null, onClic
             .clickable(src, null, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, label, tint = Blue500, modifier = Modifier.size(24.dp))
-        if (badge != null && badge > 0) {
+        Icon(icon, label, tint = if (loading) Blue500.copy(alpha = 0.45f) else Blue500, modifier = Modifier.size(24.dp))
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(56.dp).padding(3.dp),
+                color = Blue500.copy(alpha = 0.55f),
+                strokeWidth = 2.dp
+            )
+        } else if (badge != null && badge > 0) {
             Box(
                 Modifier.align(Alignment.TopEnd).offset((-2).dp, 2.dp).size(18.dp).clip(CircleShape).background(Blue500),
                 contentAlignment = Alignment.Center

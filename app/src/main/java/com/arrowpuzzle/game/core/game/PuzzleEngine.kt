@@ -30,7 +30,10 @@ data class PuzzleState(
     val cleared: List<CellKey> = emptyList(),
     val moveCount: Int = 0,
     val lives: Int = 3,
-    val hintsRemaining: Int = 3,
+    // No free hints — every hint is earned by watching a rewarded ad
+    // (see GameViewModel.grantBonusHint / GameScreen's Hint button). Starts
+    // at 0 on every level load so the ad gate can never be bypassed.
+    val hintsRemaining: Int = 0,
     val isComplete: Boolean = false,
     val isGameOver: Boolean = false,
     val lastError: CellKey? = null
@@ -70,14 +73,6 @@ object PuzzleEngine {
     }
 
     fun findHint(state: PuzzleState): CellKey? = state.remaining.keys.firstOrNull { canEscape(state, it) }
-
-    fun useHint(state: PuzzleState): PuzzleState {
-        if (state.hintsRemaining <= 0) return state
-        val t = findHint(state) ?: return state
-        val r = state.remaining - t
-        return state.copy(remaining = r, cleared = state.cleared + t,
-            hintsRemaining = state.hintsRemaining - 1, isComplete = r.isEmpty(), lastError = null)
-    }
 
     fun escapableArrows(state: PuzzleState): Set<CellKey> =
         state.remaining.keys.filter { canEscape(state, it) }.toSet()
