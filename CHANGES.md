@@ -1,3 +1,36 @@
+# v0.1.0 Final Polish — New App Icon, Real Sound Effects, Cleanup
+
+Requested changes: replace the app icon/logo with the supplied maze artwork,
+replace the synthesized arrow-tap/wrong/level-complete sounds with the three
+supplied recorded MP3 effects, and generally tighten up the project for a
+final `0.1.0` release build.
+
+## Files touched
+
+| File | Change |
+|---|---|
+| `app/src/main/res/mipmap-*/ic_launcher.png`, `ic_launcher_round.png` | **Replaced** — regenerated at all 5 densities (48–192px) from the supplied maze-icon artwork. White margin auto-cropped, corners keyed to transparent so the icon isn't a white square with a rounded image floating in it. |
+| `app/src/main/res/mipmap-*/ic_launcher_foreground.png` | **Replaced** — same artwork, scaled to sit inside the adaptive-icon safe zone (so it survives circle/squircle/rounded-square OS masks without clipping the maze) at all 5 densities (108–432px). |
+| `app/src/main/res/values/ic_launcher_background.xml` | Background colour swapped from placeholder white to `#5087C7`, sampled from the icon's own blue so the adaptive-icon background matches the foreground artwork. |
+| `store-assets/play-store-icon-512.png` | **New** — flattened 512×512 listing icon for the Play Console (not part of the app build). |
+| `app/src/main/res/raw/sfx_arrow_click.mp3` | **New** — the supplied click effect. |
+| `app/src/main/res/raw/sfx_wrong.mp3` | **New** — the supplied error/incorrect effect. |
+| `app/src/main/res/raw/sfx_level_complete.mp3` | **New** — the supplied fanfare effect. |
+| `core/audio/SoundEngine.kt` | Added `init(context)` which preloads the three MP3s into a `SoundPool`. `playMove()` (successful arrow tap), `playError()` (wrong/blocked tap) and `playComplete()` (level cleared) now play the real recorded clips; each still falls back to its old synthesized tone if the pool hasn't finished loading yet, so the game is never silent. `playButton()`/`playHint()`/`playRotate()` (small UI ticks with no supplied asset) are unchanged. |
+| `ArrowPuzzleApplication.kt` | Now calls `SoundEngine.init(this)` in `onCreate()` so the effects are preloaded before the first tap. |
+| `feature/game/GameViewModel.kt` | Successful-tap branch now calls `SoundEngine.playMove()` only (previously fired `playMove()` *and* `playCorrect()` back to back, which would have layered a synth ping under the new real click). `playCorrect()` is kept as a no-op for call-site compatibility rather than removed outright. |
+| `app/app/` | **Deleted** — a stray, fully unreferenced duplicate of the whole module (not present in `settings.gradle.kts`); it was dead weight left over from an earlier export, called out but left in place in the previous change pass. |
+| `app/build.gradle.kts` | `versionCode` bumped `1 → 2` for this release build. `versionName` intentionally left at `"0.1.0"` as requested. |
+
+**Not build-tested locally** — this sandbox has no network access to the
+Android/Google Maven repos, so Gradle can't resolve dependencies here.
+`SoundPool`, `AudioAttributes` and the mipmap/adaptive-icon setup are all
+plain Android SDK APIs already used elsewhere in this project, so risk is
+low, but please do a build + install pass in Android Studio (or let the
+GitHub Actions workflow build it) before shipping.
+
+---
+
 # Arrow Redesign — Sharp Line Renderer, Sound Pass, Slower Slide
 
 Requested changes: replace the thick rounded "pipe" arrows with a thin,

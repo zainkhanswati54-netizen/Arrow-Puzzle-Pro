@@ -1,8 +1,11 @@
 package com.arrowpuzzle.game.core.audio
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.SoundPool
+import com.arrowpuzzle.game.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -10,25 +13,24 @@ import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
- * Synthesises game-feel sound effects from raw PCM — no audio assets required.
- * Every sound is generated once and cached as a short [AudioTrack] that can fire
- * at any time without blocking the UI thread.
+ * Game-feel audio.
  *
- * v2 — replaced the old plain single-sine beeps with rounder, layered tones:
- * every note now has a short soft attack (no more clicky onset), a touch of a
- * quiet second harmonic for warmth, and a light low-pass-style smoothing pass
- * so nothing sounds like a raw square/sine test tone.
- *  - **move**: a soft airy whoosh + tiny landing tick — plays when an arrow
- *    successfully slides off the board, timed to the slide animation
- *  - **correct**: a bright ascending two-note ping (C5→E5)
- *  - **complete**: a satisfying three-note arpeggio (C5→E5→G5)
- *  - **error**: a double-pulse low buzzer for a blocked tap — harsher and
- *    more "wrong answer" than a single soft tick
- *  - **button**: a soft, quiet UI tap
- *  - **hint**: a gentle descending note (E5→C5)
+ * v3 — the three "big" feedback moments now play real recorded effects
+ * (bundled as MP3 in `res/raw`) instead of synthesized tones:
+ *  - **arrow tap that clears** → [playMove] → `sfx_arrow_click`
+ *  - **wrong / blocked tap**   → [playError] → `sfx_wrong`
+ *  - **level complete**        → [playComplete] → `sfx_level_complete`
+ *
+ * These load into a [SoundPool] once, in [init] (called from
+ * `ArrowPuzzleApplication.onCreate`), so they fire with no perceptible
+ * latency on tap. If, for any reason, the pool hasn't finished loading yet
+ * (e.g. a very fast first frame), each call falls back to a synthesized
+ * tone so the game is never silent.
+ *
+ * Small UI sounds that have no bundled asset — [playButton], [playHint],
+ * [playRotate] — are still synthesized from raw PCM, as before.
  */
 object SoundEngine {
 
@@ -40,15 +42,76 @@ object SoundEngine {
 
     private val cache = mutableMapOf<String, ShortArray>()
 
+    // ── Recorded effects ─────────────────────────────────────────────────────
+    private var soundPool: SoundPool? = null
+    private val clipIds = mutableMapOf<String, Int>()
+    private val loadedClips = mutableSetOf<Int>()
+
+    /** Call once, from `Application.onCreate()`. Loads the bundled MP3s. */
+    fun init(context: Context) {
+        if (soundPool != null) return
+        val pool = SoundPool.Builder()
+            .setMaxStreams(4)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+        pool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (status == 0) loadedClips.add(sampleId)
+        }
+        val app = context.applicationContext
+        clipIds["click"] = pool.load(app, R.raw.sfx_arrow_click, 1)
+        clipIds["wrong"] = pool.load(app, R.raw.sfx_wrong, 1)
+        clipIds["complete"] = pool.load(app, R.raw.sfx_level_complete, 1)
+        soundPool = pool
+    }
+
     fun setEnabled(value: Boolean) {
         enabled = value
     }
 
+    /** Plays a loaded recorded clip. Returns false (and plays nothing) if the
+     *  pool isn't ready yet, so the caller can fall back to a synth tone. */
+    private fun playClip(name: String, volume: Float): Boolean {
+        if (!enabled) return true // "handled" — caller should not also fall back while muted
+        val pool = soundPool ?: return false
+        val id = clipIds[name] ?: return false
+        if (id !in loadedClips) return false
+        pool.play(id, volume, volume, 1, 0, 1f)
+        return true
+    }
+
     fun playRotate() = play("rotate") { generateTick(880f, 0.045f) }
-    fun playMove() = play("move") { generateWhoosh(340f, 900f, 0.22f) }
-    fun playCorrect() = play("correct") { generatePing(523f, 659f, 0.12f) }
-    fun playComplete() = play("complete") { generateArpeggio(listOf(523f, 659f, 784f), 0.10f) }
-    fun playError() = play("error") { generateBuzz(196f, 0.16f) }
+
+    /** Arrow tap that successfully escapes the board. */
+    fun playMove() {
+        if (!playClip("click", volume = 0.9f)) {
+            play("move_fallback") { generateWhoosh(340f, 900f, 0.22f) }
+        }
+    }
+
+    /** Kept for call-site compatibility; the tap-succeeded feedback is fully
+     *  covered by [playMove]'s recorded click, so this no longer layers a
+     *  second synthesized tone on top of it. */
+    fun playCorrect() { /* no-op — see playMove() */ }
+
+    /** Level cleared. */
+    fun playComplete() {
+        if (!playClip("complete", volume = 0.95f)) {
+            play("complete_fallback") { generateArpeggio(listOf(523f, 659f, 784f), 0.10f) }
+        }
+    }
+
+    /** Blocked / wrong tap. */
+    fun playError() {
+        if (!playClip("wrong", volume = 0.9f)) {
+            play("error_fallback") { generateBuzz(196f, 0.16f) }
+        }
+    }
+
     fun playButton() = play("button") { generateTick(660f, 0.035f, volume = 0.22f) }
     fun playHint() = play("hint") { generatePing(659f, 523f, 0.10f) }
 
@@ -89,22 +152,17 @@ object SoundEngine {
         }
     }
 
-    // ── Synthesis helpers ────────────────────────────────────────────────────
+    // ── Synthesis helpers (fallback + small UI sounds only) ────────────────
 
-    /** One rounded oscillator sample: fundamental plus a quiet, soft 2nd
-     *  harmonic — this alone is most of the difference between "test tone
-     *  beep" and something that sounds intentionally designed. */
     private fun warmTone(freq: Float, t: Float): Float {
         val fundamental = sin(2.0 * PI * freq * t).toFloat()
         val harmonic = sin(2.0 * PI * freq * 2.0 * t).toFloat() * 0.16f
         return (fundamental + harmonic) * 0.87f
     }
 
-    /** Short linear fade-in so notes never start with a hard, clicky edge. */
     private fun attackEnvelope(t: Float, attackSec: Float): Float =
         if (attackSec <= 0f) 1f else min(1f, t / attackSec)
 
-    /** A single percussive tone with a soft attack and exponential decay. */
     private fun generateTick(
         freq: Float,
         durationSec: Float,
@@ -123,8 +181,6 @@ object SoundEngine {
         return out
     }
 
-    /** Two-note ascending or descending ping, with a tiny crossfade at the
-     *  seam between notes instead of a hard cut. */
     private fun generatePing(
         freq1: Float,
         freq2: Float,
@@ -145,7 +201,6 @@ object SoundEngine {
         return out
     }
 
-    /** Multi-note arpeggio for level completion. */
     private fun generateArpeggio(
         freqs: List<Float>,
         noteDuration: Float,
@@ -166,9 +221,6 @@ object SoundEngine {
         return out
     }
 
-    /** Two short low pulses with a detuned second oscillator — a harsher,
-     *  more "wrong answer" buzzer than a single rounded tick, matching the
-     *  punchier blocked-tap feedback in the competitor reference. */
     private fun generateBuzz(freq: Float, durationSec: Float, volume: Float = 0.30f): ShortArray {
         val gap = (SAMPLE_RATE * 0.03f).toInt()
         val pulseLen = ((SAMPLE_RATE * durationSec).toInt() - gap) / 2
@@ -187,8 +239,6 @@ object SoundEngine {
         return out
     }
 
-    /** Airy frequency-swept whoosh with a light noise texture, topped with a
-     *  soft landing tick — used for the arrow slide-off-board movement. */
     private fun generateWhoosh(
         freqStart: Float,
         freqEnd: Float,
@@ -196,13 +246,12 @@ object SoundEngine {
         volume: Float = 0.22f
     ): ShortArray {
         val count = (SAMPLE_RATE * durationSec).toInt()
-        val rng = Random(1)
+        val rng = kotlin.random.Random(1)
         val out = ShortArray(count)
         var phase = 0.0
         for (i in 0 until count) {
             val t = i.toFloat() / SAMPLE_RATE
             val progress = t / durationSec
-            // Bell-shaped envelope: rises, peaks near the middle, tails off.
             val envelope = sin((PI * progress).coerceIn(0.0, PI)).toFloat().let { it * it } * volume
             val freq = freqStart + (freqEnd - freqStart) * progress
             phase += 2.0 * PI * freq / SAMPLE_RATE
@@ -211,7 +260,6 @@ object SoundEngine {
             val sample = (tone * 0.8f + noise) * envelope
             out[i] = (sample * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
-        // Soft landing tick appended right after the whoosh tail.
         val tick = generateTick(1200f, 0.035f, volume = 0.14f, decay = 22f)
         return out + tick
     }
