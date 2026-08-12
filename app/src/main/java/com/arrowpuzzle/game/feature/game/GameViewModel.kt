@@ -94,6 +94,14 @@ class GameViewModel(
         else SoundEngine.playError()
     }
 
+    /** Grants one extra hint (e.g. after a rewarded ad) and immediately reveals it. */
+    fun grantBonusHint() {
+        val cur = _state.value.puzzle ?: return
+        val boosted = cur.copy(hintsRemaining = cur.hintsRemaining + 1)
+        _state.value = _state.value.copy(puzzle = boosted)
+        onHint()
+    }
+
     fun nextLevel() {
         _state.value = _state.value.copy(showWinCelebration = false)
         loadLevel(currentLevelNum + 1)

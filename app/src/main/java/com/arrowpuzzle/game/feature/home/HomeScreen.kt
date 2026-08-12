@@ -147,6 +147,9 @@ fun HomeScreen(
                     .fillMaxWidth()
             )
 
+            Spacer(Modifier.height(spacing.md))
+            com.arrowpuzzle.game.core.ads.BannerAdView()
+
             Spacer(Modifier.height(spacing.xxl))
         }
     }

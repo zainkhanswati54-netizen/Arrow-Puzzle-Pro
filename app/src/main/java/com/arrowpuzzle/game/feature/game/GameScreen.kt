@@ -1,5 +1,6 @@
 package com.arrowpuzzle.game.feature.game
 
+import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -72,7 +73,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arrowpuzzle.game.core.ads.AdManager
+import com.arrowpuzzle.game.core.ads.BannerAdView
 import com.arrowpuzzle.game.core.audio.SoundEngine
+import com.arrowpuzzle.game.core.data.AppViewModel
 import com.arrowpuzzle.game.core.design.AppTheme
 import com.arrowpuzzle.game.core.design.Blue500
 import com.arrowpuzzle.game.core.design.Blue600
@@ -103,9 +107,11 @@ fun GameScreen(
     modifier: Modifier = Modifier,
     levelId: Int = 1,
     isDaily: Boolean = false,
+    appViewModel: AppViewModel? = null,
     onDailyComplete: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val vm: GameViewModel = viewModel(
         key = "game_$levelId",
         factory = GameViewModel.factory(context, levelId, isDaily)
@@ -114,6 +120,15 @@ fun GameScreen(
     val puzzle = ui.puzzle
     val palette = AppTheme.palette
     val haptics = LocalHapticFeedback.current
+
+    // Reward loop: base coins per clear, a bit more for a clean (no-hint,
+    // low-move) solve. Computed once per win, not on every recomposition.
+    var coinsEarned by remember(puzzle?.level?.id, isDaily) { mutableStateOf(0) }
+    var totalCoins by remember { mutableStateOf(0) }
+    var currentStreak by remember { mutableStateOf(0) }
+    var streakIncreased by remember(puzzle?.level?.id, isDaily) { mutableStateOf(false) }
+    var coinsAlreadyDoubled by remember(puzzle?.level?.id, isDaily) { mutableStateOf(false) }
+    val isMilestoneLevel = !isDaily && puzzle != null && puzzle.level.id % 5 == 0
 
     // Sequences the win flow the way the reference does: board clears → a
     // short "Impressive!" beat while the board sits empty → then the
@@ -132,6 +147,21 @@ fun GameScreen(
         } else {
             showImpressive = false
             revealWin = false
+        }
+    }
+
+    // Award coins + update the daily streak exactly once per win, right as
+    // the celebration reveals — not on the win *flag* flipping, since that
+    // fires before the "Impressive!" beat and would show 0 coins briefly.
+    LaunchedEffect(revealWin) {
+        if (revealWin && puzzle != null && appViewModel != null) {
+            val base = 10 + if (isMilestoneLevel) 40 else 0
+            appViewModel.onLevelCompleted(base) { total, streak, increased ->
+                coinsEarned = base
+                totalCoins = total
+                currentStreak = streak
+                streakIncreased = increased
+            }
         }
     }
 
@@ -193,7 +223,18 @@ fun GameScreen(
                     horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)
                 ) {
                     ToolBtn(Icons.Rounded.Lightbulb, "Hint", puzzle.hintsRemaining) {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onHint()
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (puzzle.hintsRemaining > 0) {
+                            vm.onHint()
+                        } else if (activity != null && AdManager.isHintAdReady()) {
+                            AdManager.showRewardedInterstitialForHint(
+                                activity,
+                                onEarned = { vm.grantBonusHint() },
+                                onUnavailable = { SoundEngine.playError() }
+                            )
+                        } else {
+                            SoundEngine.playError()
+                        }
                     }
                     ToolBtn(Icons.Rounded.Refresh, "Retry") {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress); SoundEngine.playButton(); vm.retry()
@@ -201,6 +242,10 @@ fun GameScreen(
                 }
 
                 Spacer(Modifier.height(16.dp))
+
+                // Anchored banner — sits below the tool row, above the nav bar,
+                // so it never overlaps the tap targets on the board itself.
+                BannerAdView(Modifier.padding(bottom = 4.dp))
             }
         }
 
@@ -217,13 +262,46 @@ fun GameScreen(
                 level = puzzle.level,
                 moves = puzzle.moveCount,
                 isDaily = isDaily,
-                onNext = { vm.nextLevel() },
+                coinsEarned = coinsEarned,
+                totalCoins = totalCoins,
+                streak = currentStreak,
+                streakIncreased = streakIncreased,
+                isMilestone = isMilestoneLevel,
+                canDoubleCoins = !coinsAlreadyDoubled && activity != null && AdManager.isRewardedAdReady(),
+                onDoubleCoins = {
+                    val act = activity ?: return@WinDlg
+                    AdManager.showRewarded(
+                        act,
+                        onEarned = {
+                            coinsAlreadyDoubled = true
+                            appViewModel?.onRewardedCoinsDoubled(coinsEarned) { total -> totalCoins = total }
+                        },
+                        onUnavailable = {}
+                    )
+                },
+                onNext = {
+                    activity?.let { AdManager.maybeShowInterstitialOnLevelComplete(it) }
+                    vm.nextLevel()
+                },
                 onClaim = { onDailyComplete() },
-                onExit = onExit
+                onExit = {
+                    activity?.let { AdManager.maybeShowInterstitialOnLevelComplete(it) }
+                    onExit()
+                }
             )
         }
         // Game over
-        if (ui.showGameOver) GameOverDlg({ vm.retry() }, onExit)
+        if (ui.showGameOver) {
+            GameOverDlg(
+                canContinueWithAd = activity != null && AdManager.isRewardedAdReady(),
+                onContinueWithAd = {
+                    val act = activity ?: return@GameOverDlg
+                    AdManager.showRewarded(act, onEarned = { vm.retry() }, onUnavailable = { vm.retry() })
+                },
+                onRetry = { vm.retry() },
+                onExit = onExit
+            )
+        }
     }
 }
 
@@ -499,6 +577,13 @@ private fun WinDlg(
     level: Level,
     moves: Int,
     isDaily: Boolean,
+    coinsEarned: Int,
+    totalCoins: Int,
+    streak: Int,
+    streakIncreased: Boolean,
+    isMilestone: Boolean,
+    canDoubleCoins: Boolean,
+    onDoubleCoins: () -> Unit,
     onNext: () -> Unit,
     onClaim: () -> Unit,
     onExit: () -> Unit
@@ -519,11 +604,34 @@ private fun WinDlg(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    if (isDaily) "Daily Star Earned!" else "Level Completed!",
+                    when {
+                        isDaily -> "Daily Star Earned!"
+                        isMilestone -> "Milestone Reached! 🎁"
+                        else -> "Level Completed!"
+                    },
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 28.sp),
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
+                if (!isDaily && coinsEarned > 0) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("🪙", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "+$coinsEarned coins  ·  $totalCoins total",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                    }
+                    if (streak > 1) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (streakIncreased) "🔥 $streak-day streak!" else "🔥 $streak-day streak",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                }
                 Spacer(Modifier.height(24.dp))
                 AnimatedVisibility(
                     s,
@@ -541,7 +649,30 @@ private fun WinDlg(
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.White.copy(alpha = 0.85f)
                 )
-                Spacer(Modifier.height(36.dp))
+                if (canDoubleCoins) {
+                    Spacer(Modifier.height(18.dp))
+                    val src = remember { MutableInteractionSource() }
+                    Row(
+                        Modifier
+                            .pressScale(src, 0.965f)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.18f))
+                            .clickable(src, null, role = Role.Button) {
+                                SoundEngine.playButton(); onDoubleCoins()
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("🎬", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Watch ad to double coins (+$coinsEarned)",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White
+                        )
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
                 if (isDaily) {
                     WhitePillButton("Claim Star", onClaim, Modifier.fillMaxWidth())
                 } else {
@@ -589,7 +720,12 @@ private fun WhitePillButton(text: String, onClick: () -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun GameOverDlg(onRetry: () -> Unit, onExit: () -> Unit) {
+private fun GameOverDlg(
+    canContinueWithAd: Boolean,
+    onContinueWithAd: () -> Unit,
+    onRetry: () -> Unit,
+    onExit: () -> Unit
+) {
     Dialog(onExit, DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(0.45f)).padding(28.dp), Alignment.Center) {
             val s = remember { MutableTransitionState(false) }; s.targetState = true
@@ -600,6 +736,24 @@ private fun GameOverDlg(onRetry: () -> Unit, onExit: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Text("Only tap arrows with a clear path ahead!", style = MaterialTheme.typography.bodyLarge, color = AppTheme.palette.inkMuted, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(28.dp))
+                        if (canContinueWithAd) {
+                            val src = remember { MutableInteractionSource() }
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .pressScale(src, 0.97f)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Blue500.copy(alpha = 0.12f))
+                                    .clickable(src, null, role = Role.Button) { SoundEngine.playButton(); onContinueWithAd() }
+                                    .padding(vertical = 14.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🎬  ", style = MaterialTheme.typography.titleMedium)
+                                Text("Watch ad for a fresh set of lives", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Blue500)
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
                         PrimaryPillButton("Try Again", onRetry, Modifier.fillMaxWidth())
                         Spacer(Modifier.height(12.dp))
                         Text("Menu", style = MaterialTheme.typography.titleMedium, color = Blue500,

@@ -101,6 +101,15 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
 
+    // Monetization — AdMob (banner / interstitial / rewarded / rewarded interstitial)
+    // plus Google's User Messaging Platform for the EU/UK consent (GDPR) flow.
+    implementation(libs.play.services.ads)
+    implementation(libs.user.messaging.platform)
+
+    // Schedules the twice-daily "come back and play" reminder notifications
+    // reliably, including across reboots.
+    implementation(libs.androidx.work.runtime.ktx)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)

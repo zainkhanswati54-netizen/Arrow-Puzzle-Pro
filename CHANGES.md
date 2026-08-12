@@ -1,3 +1,75 @@
+# v0.2.0 — AdMob Monetization, Daily Reminders, End-Game Engagement Loop
+
+Requested changes: wire up all four AdMob ad formats (Banner, Interstitial,
+Rewarded Interstitial, Rewarded), add two daily local notifications to bring
+players back, and make the level-complete/game-over flow more engaging so
+players keep playing.
+
+## Ad units used
+
+| Placement | Ad unit ID | Where it shows |
+|---|---|---|
+| Banner-arrow | `ca-app-pub-9019700052213764/3749889300` | Bottom of Home screen and Game screen |
+| Interstitial-arrow | `ca-app-pub-9019700052213764/3725838572` | Every 3rd level completion (never on the first 3 levels) |
+| Rewarded interstitial — Hint | ⚠️ **not set** — see below | Tapping Hint after hints run out |
+| Rewarded-Arrow | `ca-app-pub-9019700052213764/8810644297` | "Double coins" on the Win screen, "Continue" on the Game Over screen |
+
+**⚠️ Action needed:** the Rewarded Interstitial (Hint) block only contained
+the App ID twice (`ca-app-pub-9019700052213764~2171611579`), not a real
+ad-unit ID — those look like `ca-app-pub-XXXXXXXXXXXXXXXX/NNNNNNNNNN`. The
+build currently falls back to Google's public test ID
+(`core/ads/AdIds.kt`) so it compiles and shows test ads; grab the real ID
+from the AdMob console (Apps → Arrow Puzzle → Ad units) and drop it into
+`AdIds.kt` before shipping.
+
+## Files touched
+
+| File | Change |
+|---|---|
+| `gradle/libs.versions.toml`, `app/build.gradle.kts` | Added `play-services-ads`, `user-messaging-platform` (GDPR/UMP consent), `androidx-work-runtime-ktx`. |
+| `AndroidManifest.xml` | AdMob `APPLICATION_ID` meta-data; `INTERNET`, `ACCESS_NETWORK_STATE`, `AD_ID`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` permissions; registered `ReminderReceiver` and `BootReceiver`. |
+| `core/ads/AdIds.kt` | **New** — every ad-unit ID in one place; debug builds always use Google's test IDs. |
+| `core/ads/AdManager.kt` | **New** — owns consent (UMP), loading/caching, and showing for all three full-screen formats, plus a simple frequency cap (skip first 3 levels, then every 3rd) for the interstitial. |
+| `core/ads/BannerAdView.kt` | **New** — Compose wrapper around `AdView` for the anchored banner. |
+| `core/notifications/ReminderScheduler.kt` | **New** — arms two daily `AlarmManager` alarms (12:00 PM and 7:30 PM). |
+| `core/notifications/ReminderReceiver.kt` | **New** — builds and posts each reminder notification, with different copy per time slot. |
+| `core/notifications/BootReceiver.kt` | **New** — re-arms the alarms after a device reboot. |
+| `core/notifications/NotificationChannels.kt` | **New** — creates the `daily_reminder` notification channel. |
+| `ArrowPuzzleApplication.kt` | Initializes `AdManager`, creates the notification channel, and arms the daily reminders on process start. |
+| `MainActivity.kt` | Requests the `POST_NOTIFICATIONS` runtime permission on Android 13+, then runs the UMP consent flow before any ad request. |
+| `core/data/AppPreferences.kt` | Added a persisted coin balance and a calendar-day play streak (`recordPlaySession()`, `addCoins()`), exposed through `AppViewModel.onLevelCompleted()` / `onRewardedCoinsDoubled()`. |
+| `feature/game/GameViewModel.kt` | Added `grantBonusHint()` — grants and immediately reveals one hint (used after a rewarded-interstitial watch). |
+| `feature/game/GameScreen.kt` | Win screen now shows coins earned/total and the current streak, a **"Milestone Reached!"** variant with bonus coins every 5th level, and a **"Watch ad to double coins"** button. Game Over screen adds a **"Watch ad for a fresh set of lives"** rewarded option before Try Again. Hint button falls through to a rewarded interstitial once hints run out. Banner ad added below the tool row. Interstitial is triggered from `onNext`/`onExit` on the win screen — a natural break point, never mid-puzzle. |
+| `feature/home/HomeScreen.kt` | Banner ad added below the "New Game" button. |
+| `navigation/ArrowNavHost.kt` | Passes the shared `AppViewModel` down into `GameScreen` so coins/streak persist through the app-level store. |
+
+## Design notes (the "addictive/engaging" ask)
+
+Kept this to standard, transparent game-economy mechanics — no dark
+patterns, no fake scarcity, no disguised ads:
+- **Coins** are awarded openly on every win and shown immediately.
+- **Streak** only increments once per real calendar day (retries don't
+  inflate it) and is always visible, never hidden until it breaks.
+- **Milestone chest** (every 5th level) is a bonus, not a paywall.
+- Every rewarded-ad placement is opt-in with a clearly labeled button —
+  the player always has a free path forward (Try Again / Next Game) that
+  doesn't require watching anything.
+- Interstitials never interrupt a puzzle in progress; they only fire from
+  the win screen, capped to at most once every 3 levels.
+
+## Known gaps / next steps
+
+- The Rewarded Interstitial (Hint) ad-unit ID needs to be supplied (see above).
+- AdMob apps need to be linked to your Play Console listing and the app
+  needs to go through Google's standard ad-serving review before live ads
+  will actually fill in production.
+- Consider adding a Settings toggle to opt out of the daily reminders
+  (currently always-on if notification permission is granted) if you want
+  users to be able to turn them off from within the app rather than only
+  via system notification settings.
+
+---
+
 # v0.1.0 Final Polish — New App Icon, Real Sound Effects, Cleanup
 
 Requested changes: replace the app icon/logo with the supplied maze artwork,

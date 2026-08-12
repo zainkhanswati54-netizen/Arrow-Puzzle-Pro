@@ -193,6 +193,7 @@ fun ArrowPuzzleApp(
                     val levelId = entry.arguments?.getString("levelId")?.toIntOrNull() ?: 1
                     GameScreen(
                         levelId = levelId,
+                        appViewModel = appViewModel,
                         onExit = navController::popBackStack
                     )
                 }
@@ -204,6 +205,7 @@ fun ArrowPuzzleApp(
                     GameScreen(
                         levelId = dailyVm.todaysLevelId(),
                         isDaily = true,
+                        appViewModel = appViewModel,
                         onDailyComplete = {
                             dailyVm.onChallengeCompleted()
                             navController.popBackStack()

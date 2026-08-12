@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Required by the Google Mobile Ads SDK for the advertising identifier. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+    <!-- Android 13+ runtime permission gate for posting the daily reminder notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the twice-daily reminder alarms survive a device reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".ArrowPuzzleApplication"
         android:allowBackup="true"
@@ -12,6 +21,26 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.ArrowPuzzle.Starting">
+
+        <!-- AdMob App ID (test/live values live in AdIds.kt so this never needs editing). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9019700052213764~2171611579" />
+
+        <!-- Fires twice a day (see ReminderScheduler) to nudge the player back in. -->
+        <receiver
+            android:name=".core.notifications.ReminderReceiver"
+            android:exported="false" />
+
+        <!-- Re-arms the reminder alarms after a reboot, since AlarmManager alarms
+             don't survive one on their own. -->
+        <receiver
+            android:name=".core.notifications.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".MainActivity"
