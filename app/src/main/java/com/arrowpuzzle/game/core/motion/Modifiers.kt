@@ -176,7 +176,7 @@ fun Modifier.shakeOnce(trigger: Any?): Modifier {
     }
 
     return graphicsLayer {
-        translationX = offset.value * 6f * density
+        translationX = offset.value * 8f * density
     }
 }
 

@@ -13,6 +13,7 @@ import com.arrowpuzzle.game.core.game.CellKey
 import com.arrowpuzzle.game.core.game.LevelGenerator
 import com.arrowpuzzle.game.core.game.PuzzleEngine
 import com.arrowpuzzle.game.core.game.PuzzleState
+import com.arrowpuzzle.game.core.motion.Haptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,9 +73,9 @@ class GameViewModel(
         val next = PuzzleEngine.tap(cur, cell)
 
         when {
-            next.isComplete -> SoundEngine.playComplete()
-            canEsc -> SoundEngine.playMove()
-            else -> SoundEngine.playError()
+            next.isComplete -> { SoundEngine.playComplete(); Haptics.levelComplete() }
+            canEsc -> { SoundEngine.playMove(); Haptics.tapCorrect() }
+            else -> { SoundEngine.playError(); Haptics.tapWrong() }
         }
 
         _state.value = _state.value.copy(
@@ -88,10 +89,10 @@ class GameViewModel(
 
     fun onHint() {
         val cur = _state.value.puzzle ?: return
-        if (cur.hintsRemaining <= 0) { SoundEngine.playError(); return }
+        if (cur.hintsRemaining <= 0) { SoundEngine.playError(); Haptics.tapWrong(); return }
         val h = PuzzleEngine.findHint(cur)
-        if (h != null) { SoundEngine.playHint(); _state.value = _state.value.copy(hintCell = h) }
-        else SoundEngine.playError()
+        if (h != null) { SoundEngine.playHint(); Haptics.tapButton(); _state.value = _state.value.copy(hintCell = h) }
+        else { SoundEngine.playError(); Haptics.tapWrong() }
     }
 
     /** Grants one extra hint (e.g. after a rewarded ad) and immediately reveals it. */

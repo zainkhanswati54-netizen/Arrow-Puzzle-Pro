@@ -109,6 +109,8 @@ fun MeScreen(
                 )
             }
 
+            Spacer(Modifier.height(spacing.md))
+            com.arrowpuzzle.game.core.ads.BannerAdView()
             Spacer(Modifier.height(spacing.huge))
         }
     }

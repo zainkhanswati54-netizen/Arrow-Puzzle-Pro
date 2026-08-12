@@ -36,11 +36,10 @@ object AdManager {
     private var rewardedInterstitialAd: RewardedInterstitialAd? = null
     private var rewardedAd: RewardedAd? = null
 
-    // Simple frequency cap so the interstitial never shows on the very first
-    // couple of levels and then only every Nth completion after that —
-    // enough presence to monetize without souring the early experience.
-    private const val LEVELS_BEFORE_FIRST_INTERSTITIAL = 3
-    private const val LEVELS_BETWEEN_INTERSTITIALS = 3
+    // Frequency cap for the interstitial: shows after the very first level so
+    // monetization starts immediately, then again after every completion.
+    private const val LEVELS_BEFORE_FIRST_INTERSTITIAL = 1
+    private const val LEVELS_BETWEEN_INTERSTITIALS = 1
     private var levelsSinceLastInterstitial = 0
 
     fun init(context: Context) {

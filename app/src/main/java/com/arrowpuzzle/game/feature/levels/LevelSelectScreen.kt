@@ -136,6 +136,10 @@ fun LevelSelectScreen(
                     )
                 }
             }
+
+            Spacer(Modifier.height(8.dp))
+            com.arrowpuzzle.game.core.ads.BannerAdView()
+            Spacer(Modifier.height(8.dp))
         }
     }
 }

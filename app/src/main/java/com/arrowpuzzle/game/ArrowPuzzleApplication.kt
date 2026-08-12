@@ -3,6 +3,7 @@ package com.arrowpuzzle.game
 import android.app.Application
 import com.arrowpuzzle.game.core.ads.AdManager
 import com.arrowpuzzle.game.core.audio.SoundEngine
+import com.arrowpuzzle.game.core.motion.Haptics
 import com.arrowpuzzle.game.core.notifications.NotificationChannels
 import com.arrowpuzzle.game.core.notifications.ReminderScheduler
 
@@ -13,6 +14,10 @@ class ArrowPuzzleApplication : Application() {
         // complete) once at process start so the very first tap in the game
         // already has zero-latency audio available.
         SoundEngine.init(this)
+
+        // Grabs the system Vibrator once so every tap/win/error haptic below
+        // fires with no first-call latency.
+        Haptics.init(this)
 
         // Ads are initialized here so the very first interstitial/rewarded
         // request already has a warm SDK behind it; actual consent (UMP) is

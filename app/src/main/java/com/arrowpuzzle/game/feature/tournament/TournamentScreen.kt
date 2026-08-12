@@ -179,6 +179,8 @@ fun TournamentScreen(
                 onInfo = { showInfo = true }
             )
 
+            com.arrowpuzzle.game.core.ads.BannerAdView()
+
             Surface(
                 modifier = Modifier
                     .fillMaxSize()

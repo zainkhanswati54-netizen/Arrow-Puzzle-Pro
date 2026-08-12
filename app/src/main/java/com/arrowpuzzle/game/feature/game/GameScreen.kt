@@ -59,10 +59,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -87,6 +85,7 @@ import com.arrowpuzzle.game.core.game.CellKey
 import com.arrowpuzzle.game.core.game.Direction
 import com.arrowpuzzle.game.core.game.Level
 import com.arrowpuzzle.game.core.game.PuzzleState
+import com.arrowpuzzle.game.core.motion.Haptics
 import com.arrowpuzzle.game.core.motion.Motion
 import com.arrowpuzzle.game.core.motion.enterFromBelow
 import com.arrowpuzzle.game.core.motion.pressScale
@@ -119,7 +118,6 @@ fun GameScreen(
     val ui by vm.state.collectAsState()
     val puzzle = ui.puzzle
     val palette = AppTheme.palette
-    val haptics = LocalHapticFeedback.current
 
     // Reward loop: base coins per clear, a bit more for a clean (no-hint,
     // low-move) solve. Computed once per win, not on every recomposition.
@@ -183,7 +181,7 @@ fun GameScreen(
                                 .pressScale(src, 0.88f)
                                 .clip(CircleShape)
                                 .clickable(src, null, role = Role.Button) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    Haptics.tapButton()
                                     SoundEngine.playButton()
                                 },
                             contentAlignment = Alignment.Center
@@ -211,7 +209,7 @@ fun GameScreen(
                 MazeBoard(
                     puzzle = puzzle,
                     hintCell = ui.hintCell,
-                    onCellTap = { r, c -> haptics.performHapticFeedback(HapticFeedbackType.LongPress); vm.onCellTap(r, c) },
+                    onCellTap = { r, c -> vm.onCellTap(r, c) },
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)
                 )
 
@@ -223,21 +221,21 @@ fun GameScreen(
                     horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)
                 ) {
                     ToolBtn(Icons.Rounded.Lightbulb, "Hint", puzzle.hintsRemaining) {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         if (puzzle.hintsRemaining > 0) {
                             vm.onHint()
                         } else if (activity != null && AdManager.isHintAdReady()) {
+                            Haptics.tapButton()
                             AdManager.showRewardedInterstitialForHint(
                                 activity,
                                 onEarned = { vm.grantBonusHint() },
-                                onUnavailable = { SoundEngine.playError() }
+                                onUnavailable = { SoundEngine.playError(); Haptics.tapWrong() }
                             )
                         } else {
-                            SoundEngine.playError()
+                            SoundEngine.playError(); Haptics.tapWrong()
                         }
                     }
                     ToolBtn(Icons.Rounded.Refresh, "Retry") {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress); SoundEngine.playButton(); vm.retry()
+                        Haptics.tapButton(); SoundEngine.playButton(); vm.retry()
                     }
                 }
 
@@ -441,8 +439,18 @@ private fun MazeBoard(puzzle: PuzzleState, hintCell: CellKey?, onCellTap: (Int, 
                                 val dist = cellPx * (level.gridCols + level.gridRows) * 0.65f
                                 translationX = exit.direction.dx * p * dist
                                 translationY = exit.direction.dy * p * dist
+                                // Quick punch-pop in the first ~12% of the exit before the
+                                // stretch-and-fly takes over — reads as an immediate,
+                                // satisfying "hit" on tap instead of a delayed slide.
+                                val punch = if (p < 0.12f) {
+                                    1f + 0.32f * kotlin.math.sin((p / 0.12f) * Math.PI.toFloat())
+                                } else 1f
                                 val stretch = 1f + p * 1.4f
-                                if (exit.direction.dx != 0) scaleX = stretch else scaleY = stretch
+                                if (exit.direction.dx != 0) {
+                                    scaleX = stretch * punch; scaleY = punch
+                                } else {
+                                    scaleY = stretch * punch; scaleX = punch
+                                }
                                 alpha = (1f - ((p - 0.5f).coerceAtLeast(0f) / 0.5f)).coerceIn(0f, 1f)
                             }
                     ) {
@@ -697,7 +705,6 @@ private fun WinDlg(
 @Composable
 private fun WhitePillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null) {
     val src = remember { MutableInteractionSource() }
-    val haptics = LocalHapticFeedback.current
     Box(
         modifier
             .pressScale(src, 0.965f)
@@ -705,7 +712,7 @@ private fun WhitePillButton(text: String, onClick: () -> Unit, modifier: Modifie
             .clip(CircleShape)
             .background(Color.White)
             .clickable(src, null, role = Role.Button) {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress); onClick()
+                Haptics.tapButton(); onClick()
             }
             .padding(horizontal = 28.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center

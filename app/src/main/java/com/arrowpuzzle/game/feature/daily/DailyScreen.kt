@@ -147,6 +147,8 @@ fun DailyScreen(
                         .fillMaxWidth()
                 )
 
+                com.arrowpuzzle.game.core.ads.BannerAdView()
+
                 Spacer(Modifier.height(24.dp))
             }
         }
